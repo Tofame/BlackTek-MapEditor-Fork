@@ -1042,6 +1042,11 @@ void MainMenuBar::OnSearchForStuffOnMap(wxCommandEvent& WXUNUSED(event))
 	SearchItems(true, true, true, true, false);
 }
 
+void MainMenuBar::OnSearchForDuplicatedItemsOnMap(wxCommandEvent& WXUNUSED(event))
+{
+	SearchDuplicatedItems(false);
+}
+
 void MainMenuBar::OnSearchForZonesOnMap(wxCommandEvent& WXUNUSED(event))
 {
 	SearchItems(false, false, false, false, true);
