@@ -5,7 +5,7 @@ workspace "Black-Tek-Mapeditor"
    editorintegration "On"
 
    project        "Black-Tek-Mapeditor"
-      kind        "ConsoleApp"
+      kind        "WindowedApp"
       language    "C++"
       cppdialect  "C++20"
       targetdir   "%{wks.location}"
