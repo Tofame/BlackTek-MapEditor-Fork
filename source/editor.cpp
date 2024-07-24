@@ -999,7 +999,9 @@ void Editor::moveSelection(const Position& offset)
 			storage_tile->house_id = new_tile->house_id;
 			new_tile->house_id = 0;
 			storage_tile->setMapFlags(new_tile->getMapFlags());
+			storage_tile->setZoneIds(new_tile);
 			new_tile->setMapFlags(TILESTATE_NONE);
+			new_tile->clearZoneId();
 			borderize = true;
 		}
 

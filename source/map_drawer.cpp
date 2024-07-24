@@ -44,9 +44,62 @@
 #include "waypoint_brush.h"
 #include "light_drawer.h"
 
+using Color = std::tuple<int, int, int>;
+
+static std::vector<Color> colors;
+void GenerateColors()
+{
+	int r = 250, g = 100, b = 100;
+	const int step = 25;
+	bool incrementing = true;
+
+	while (true)
+	{
+		if (std::find(colors.begin(), colors.end(), Color({ r, g, b })) == colors.end())
+		{
+			colors.push_back({ r, g, b });
+		}
+
+		if (g < 250 && incrementing)
+		{
+			g += step;
+		}
+		else if (r > 100 && !incrementing && g == 250)
+		{
+			r -= step;
+		}
+		else if (b < 250 && r == 100)
+		{
+			b += step;
+		}
+		else if (g > 100 && b == 250)
+		{
+			g -= step;
+		}
+		else if (r < 250 && g == 100)
+		{
+			r += step;
+		}
+		else if (b > 100 && r == 250)
+		{
+			b -= step;
+		}
+		else if (b == 100 && g == 250)
+		{
+			incrementing = false;
+		}
+
+		if (r == 250 && g == 100 && b == 100 && !incrementing)
+		{
+			break;
+		}
+	}
+}
+
 DrawingOptions::DrawingOptions()
 {
 	SetDefault();
+	GenerateColors();
 }
 
 void DrawingOptions::SetDefault()
@@ -65,6 +118,7 @@ void DrawingOptions::SetDefault()
 	show_houses = true;
 	show_shade = true;
 	show_special_tiles = true;
+	show_zone_areas = true;
 	show_items = true;
 
 	highlight_items = false;
@@ -96,6 +150,7 @@ void DrawingOptions::SetIngame()
 	show_houses = false;
 	show_shade = false;
 	show_special_tiles = false;
+	show_zone_areas = false;
 	show_items = true;
 
 	highlight_items = false;
@@ -320,6 +375,7 @@ void MapDrawer::DrawMap()
 			int nd_end_x = (end_x & ~3) + 4;
 			int nd_end_y = (end_y & ~3) + 4;
 
+			zoneTiles.clear();
 			for(int nd_map_x = nd_start_x; nd_map_x <= nd_end_x; nd_map_x += 4) {
 				for(int nd_map_y = nd_start_y; nd_map_y <= nd_end_y; nd_map_y += 4) {
 					QTreeNode* nd = editor.getMap().getLeaf(nd_map_x, nd_map_y);
@@ -367,6 +423,46 @@ void MapDrawer::DrawMap()
 							glVertex2f(cx,     cy);
 						glEnd();
 					}
+				}
+			}
+
+			for (auto& itZonePos : zoneTiles)
+			{
+				ZoneFinder finder(itZonePos.second);
+				auto zones = finder.findZones();
+
+				for (const auto& itZone : zones)
+				{
+					const FinderPosition center = finder.findClosestToCenter(itZone);
+
+					QTreeNode* nd = editor.getMap().getLeaf(center.x, center.y);
+					TileLocation* location = nd->getTile(center.x, center.y, center.z);
+
+					const Tile* tile = location->get();
+
+					std::ostringstream tooltip;
+					tooltip << "zone id: ";
+					size_t zones = tile->getZoneIds().size();
+					for (const auto& zoneId : tile->getZoneIds())
+					{
+						tooltip << zoneId;
+						if (--zones > 0)
+							tooltip << "/";
+					}
+
+					int offset;
+					if (map_z <= rme::MapGroundLayer)
+					{
+						offset = (rme::MapGroundLayer - map_z) * rme::TileSize;
+					}
+					else
+					{
+						offset = rme::TileSize * (floor - map_z);
+					}
+
+					int draw_x = ((tile->getX() * rme::TileSize) - view_scroll_x) - offset;
+					int draw_y = ((tile->getY() * rme::TileSize) - view_scroll_y) - offset;
+					MakeTooltip(draw_x, draw_y + 8, tooltip.str());
 				}
 			}
 
@@ -453,6 +549,25 @@ void MapDrawer::DrawSecondaryMap(int map_z)
 				if(options.show_special_tiles && tile->getMapFlags() & TILESTATE_NOPVP) {
 					g /= 2;
 				}
+
+				if (options.show_zone_areas && tile->getMapFlags() & TILESTATE_ZONE_BRUSH) {
+					size_t zones = tile->getZoneIds().size();
+					uint16_t r16 = 0, g16 = 0, b16 = 0;
+					for (const auto& zoneId : tile->getZoneIds())
+					{
+						const uint16_t colorIndex = zoneId % colors.size();
+						const Color colour = colors.at(colorIndex);
+
+						r16 += std::get<0>(colour);
+						g16 += std::get<1>(colour);
+						b16 += std::get<2>(colour);
+					}
+
+					r = r16 / zones;
+					g = g16 / zones;
+					b = b16 / zones;
+				}
+
 				BlitItem(draw_x, draw_y, tile, tile->ground, true, r, g, b, 160);
 			}
 
@@ -1387,7 +1502,7 @@ void MapDrawer::BlitCreature(int screenx, int screeny, const Creature* creature,
 	BlitCreature(screenx, screeny, creature->getLookType(), creature->getDirection(), red, green, blue, alpha);
 }
 
-void MapDrawer::WriteTooltip(const Item* item, std::ostringstream& stream)
+void MapDrawer::WriteTooltip(Tile* tile, const Item* item, std::ostringstream& stream)
 {
 	if(!item) return;
 
@@ -1395,17 +1510,31 @@ void MapDrawer::WriteTooltip(const Item* item, std::ostringstream& stream)
 	if(id < 100)
 		return;
 
+	const auto& zoneIds = tile->getZoneIds();
 	const uint16_t unique = item->getUniqueID();
 	const uint16_t action = item->getActionID();
 	const std::string& text = item->getText();
-	if(unique == 0 && action == 0 && text.empty())
+	if(unique == 0 && action == 0 && zoneIds.empty() && text.empty())
 		return;
 
 	if(stream.tellp() > 0)
 		stream << "\n";
 
-	stream << "id: " << id << "\n";
 
+	if (!zoneIds.empty())
+	{
+		for (auto& zoneId : zoneIds)
+		{
+			auto itZone = zoneTiles.find(zoneId);
+			if (itZone == zoneTiles.end())
+				zoneTiles.emplace(zoneId, std::vector<FinderPosition>({ FinderPosition(tile->getX(), tile->getY(), tile->getZ()) }));
+			else
+				itZone->second.push_back(FinderPosition(tile->getX(), tile->getY(), tile->getZ()));
+		}
+	}
+	else
+		stream << "id: " << id << "\n";
+	
 	if(action > 0)
 		stream << "aid: " << action << "\n";
 	if(unique > 0)
@@ -1498,6 +1627,23 @@ void MapDrawer::DrawTile(TileLocation* location)
 			if(showspecial && tile->getMapFlags() & TILESTATE_NOPVP) {
 				g /= 2;
 			}
+
+			if (options.show_zone_areas && tile->getMapFlags() & TILESTATE_ZONE_BRUSH) {
+				size_t zones = tile->getZoneIds().size();
+				uint16_t r16 = 0, g16 = 0, b16 = 0;
+				for (const auto& zoneId : tile->getZoneIds()) {
+					const uint16_t colorIndex = zoneId % colors.size();
+					const Color colour = colors.at(colorIndex);
+
+					r16 += std::get<0>(colour);
+					g16 += std::get<1>(colour);
+					b16 += std::get<2>(colour);
+				}
+
+				r = r16 / zones;
+				g = g16 / zones;
+				b = b16 / zones;
+			}
 		}
 
 		if(only_colors) {
@@ -1517,7 +1663,7 @@ void MapDrawer::DrawTile(TileLocation* location)
 		}
 
 		if(show_tooltips && position.z == floor)
-			WriteTooltip(tile->ground, tooltip);
+			WriteTooltip(tile, tile->ground, tooltip);
 	}
 
 	bool hidden = only_colors || (options.hide_items_when_zoomed && zoom > 10.f);
@@ -1525,7 +1671,7 @@ void MapDrawer::DrawTile(TileLocation* location)
 	if(!hidden && !tile->items.empty()) {
 		for(Item* item : tile->items) {
 			if(show_tooltips && position.z == floor)
-				WriteTooltip(item, tooltip);
+				WriteTooltip(tile, item, tooltip);
 
 			if(options.show_preview && zoom <= 2.0)
 				item->animate();

@@ -86,6 +86,7 @@ void Brushes::init()
 	addBrush(g_gui.rook_brush = newd FlagBrush(TILESTATE_NOPVP));
 	addBrush(g_gui.nolog_brush = newd FlagBrush(TILESTATE_NOLOGOUT));
 	addBrush(g_gui.pvp_brush = newd FlagBrush(TILESTATE_PVPZONE));
+	addBrush(g_gui.zone_brush = newd FlagBrush(TILESTATE_ZONE_BRUSH));
 
 	GroundBrush::init();
 	WallBrush::init();
@@ -248,7 +249,7 @@ bool TerrainBrush::friendOf(TerrainBrush* other)
 // Flag brush
 // draws pz etc.
 
-FlagBrush::FlagBrush(uint32_t _flag) : flag(_flag)
+FlagBrush::FlagBrush(uint32_t _flag) : flag(_flag), zoneId(0)
 {
 	////
 }
@@ -265,6 +266,7 @@ std::string FlagBrush::getName() const
 		case TILESTATE_NOPVP: return "No combat zone brush (0x04)";
 		case TILESTATE_NOLOGOUT: return "No logout zone brush (0x08)";
 		case TILESTATE_PVPZONE: return "PVP Zone brush (0x10)";
+		case TILESTATE_ZONE_BRUSH: return "Zone brush (0x40)";
 	}
 	return "Unknown flag brush";
 }
@@ -276,6 +278,7 @@ int FlagBrush::getLookID() const
 		case TILESTATE_NOPVP: return EDITOR_SPRITE_NOPVP_TOOL;
 		case TILESTATE_NOLOGOUT: return EDITOR_SPRITE_NOLOG_TOOL;
 		case TILESTATE_PVPZONE: return EDITOR_SPRITE_PVPZ_TOOL;
+		case TILESTATE_ZONE_BRUSH: return EDITOR_SPRITE_ZONE_TOOL;
 	}
 	return 0;
 }
@@ -288,13 +291,42 @@ bool FlagBrush::canDraw(BaseMap* map, const Position& position) const
 
 void FlagBrush::undraw(BaseMap* map, Tile* tile)
 {
-	tile->unsetMapFlags(flag);
+	if (flag & TILESTATE_ZONE_BRUSH)
+	{
+		if (zoneId == 0)
+		{
+			tile->unsetMapFlags(flag);
+			tile->clearZoneId();
+		}
+		else
+		{
+			tile->removeZoneId(zoneId);
+			if (tile->getZoneIds().empty())
+				tile->unsetMapFlags(flag);
+		}
+	}
+	else
+		tile->unsetMapFlags(flag);
 }
 
 void FlagBrush::draw(BaseMap* map, Tile* tile, void* parameter)
 {
 	if(tile->hasGround()) {
-		tile->setMapFlags(flag);
+		if (flag & TILESTATE_ZONE_BRUSH)
+		{
+			if (zoneId == 0)
+			{
+				tile->unsetMapFlags(flag);
+				tile->clearZoneId();
+			}
+			else
+			{
+				tile->setMapFlags(flag);
+				tile->addZoneId(zoneId);
+			}
+		}
+		else
+			tile->setMapFlags(flag);
 	}
 }
 
