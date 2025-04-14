@@ -1,20 +1,27 @@
 workspace "Black-Tek-Mapeditor"
-   configurations { "Debug", "Release"}
+   configurations { "Debug", "Release" }
    platforms { "64" }
    location ""
    editorintegration "On"
 
-   project        "Black-Tek-Mapeditor"
-      kind        "WindowedApp"
-      language    "C++"
-      cppdialect  "C++20"
-      targetdir   "%{wks.location}"
-      objdir      "build/%{cfg.buildcfg}/obj"
-      location    ""
+   project "Black-Tek-Mapeditor"
+      kind "WindowedApp"
+      language "C++"
+      cppdialect "C++20"
+      targetdir "%{wks.location}"
+      objdir "build/%{cfg.buildcfg}/obj"
+      location ""
       files { "source/**.cpp", "source/**.h" }
-      flags {"LinkTimeOptimization", "MultiProcessorCompile"}
+      flags { "LinkTimeOptimization", "MultiProcessorCompile" }
       vectorextensions "AVX"
       enableunitybuild "On"
+
+      -- Add wxWidgets, zlib, fmt, OpenGL, GLUT, and wxGL dependencies for Linux
+      filter "system:linux"
+         includedirs { "/usr/include/wx-3.2" } -- Optional, as wx-config usually handles this
+         buildoptions { "`wx-config --cxxflags`" }
+         linkoptions { "`wx-config --libs`", "-lwx_gtk3u_aui-3.2", "-lwx_gtk3u_gl-3.2", "-lz", "-lfmt", "-lGL", "-lglut" }
+      filter {}
 
       filter "configurations:Debug"
          defines { "DEBUG" }
@@ -40,12 +47,12 @@ workspace "Black-Tek-Mapeditor"
          openmp "On"
          characterset "MBCS"
          debugformat "c7"
-         linkoptions {"/IGNORE:4099"}
+         linkoptions { "/IGNORE:4099" }
       filter {}
 
       filter "toolset:gcc"
          buildoptions { "-fno-strict-aliasing" }
-         buildoptions {"-std=c++20"}
+         buildoptions { "-std=c++20" }
       filter {}
 
       filter "toolset:clang"
@@ -56,4 +63,4 @@ workspace "Black-Tek-Mapeditor"
          buildoptions { "-fvisibility=hidden" }   
       filter {}
 
-      intrinsics   "On"
+      intrinsics "On"
