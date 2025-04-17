@@ -1501,9 +1501,8 @@ bool IOMapOTBM::saveSpawns(Map& map, pugi::xml_document& doc)
 						creatureNode.append_attribute("y") = y;
 						creatureNode.append_attribute("z") = spawnPosition.z;
 						creatureNode.append_attribute("spawntime") = creature->getSpawnTime();
-						if(creature->getDirection() != NORTH) {
-							creatureNode.append_attribute("direction") = creature->getDirection();
-						}
+						creatureNode.append_attribute("direction") = creature->getDirection();
+
 
 						// Mark as saved
 						creature->save();
