@@ -47,6 +47,7 @@ workspace "Black-Tek-Mapeditor"
          openmp "On"
          characterset "MBCS"
          debugformat "c7"
+         vsprops { VcpkgEnableManifest = "true" }
          linkoptions { "/IGNORE:4099" }
       filter {}
 
