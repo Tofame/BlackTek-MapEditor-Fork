@@ -150,7 +150,7 @@ void DrawingOptions::SetIngame()
 	show_houses = false;
 	show_shade = false;
 	show_special_tiles = false;
-	show_zone_areas = false;
+	show_zone_areas = true;
 	show_items = true;
 
 	highlight_items = false;
