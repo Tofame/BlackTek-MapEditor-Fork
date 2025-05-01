@@ -22,6 +22,7 @@
 #include <wx/zstream.h>
 #include <wx/mstream.h>
 #include <wx/datstrm.h>
+#include <wx/dir.h>
 
 #include "settings.h"
 #include "gui.h" // Loadbar
@@ -38,6 +39,9 @@
 
 typedef uint8_t attribute_t;
 typedef uint32_t flags_t;
+
+
+std::map<uint16_t, std::vector<Position>> zoneMap;
 
 // H4X
 void reform(Map* map, Tile* tile, Item* item)
@@ -62,6 +66,162 @@ void reform(Map* map, Tile* tile, Item* item)
 
 // ============================================================================
 // Item
+
+std::string removeOTBMExtension(const std::string& filename) {
+	size_t pos = filename.rfind(".otbm");
+	if (pos != std::string::npos) {
+		return filename.substr(0, pos);
+	}
+	return filename;
+}
+
+toml::table serializeZoneToToml(uint16_t zoneId, const std::vector<Position>& positions) {
+	std::ostringstream tomlStream;
+	tomlStream << "[[zone]]\n";
+	tomlStream << "id = " << zoneId << "\n";
+	tomlStream << "positions = [";
+	for (size_t i = 0; i < positions.size(); ++i) {
+		const auto& pos = positions[i];
+		tomlStream << "{x = " << pos.x << ", y = " << pos.y << ", z = " << pos.z << "}";
+		if (i < positions.size() - 1) {
+			tomlStream << ", ";
+		}
+	}
+	tomlStream << "]\n\n";
+	std::string tomlString = tomlStream.str();
+	try {
+		return toml::parse(tomlString);
+	}
+	catch (const toml::parse_error& err) {
+		throw std::runtime_error("Failed to parse generated TOML: " + std::string(err.what()));
+	}
+}
+
+void IOMapOTBM::saveZonesToToml(const std::map<uint16_t, std::vector<Position>>& zoneMap, const wxFileName& dir, Map& map) {
+	auto mapName = removeOTBMExtension(map.getName());
+	auto folderPath = dir.GetPath(wxPATH_GET_SEPARATOR | wxPATH_GET_VOLUME) + mapName + "-zones";
+
+	if (not wxDirExists(folderPath)) {
+		wxMkDir(folderPath);
+	}
+
+	wxArrayString existingFiles;
+	wxDir::GetAllFiles(folderPath, &existingFiles, "*.toml", wxDIR_FILES);
+
+	std::set<uint16_t> zoneIdsToSave;
+	for (const auto& [zoneId, _] : zoneMap) {
+		zoneIdsToSave.insert(zoneId);
+	}
+
+	for (const auto& filePath : existingFiles) {
+		auto fileName = wxFileName(filePath);
+		auto baseName = fileName.GetName();
+
+		unsigned long zoneId;
+		if (baseName.ToULong(&zoneId)) {
+			if (zoneIdsToSave.find(static_cast<uint16_t>(zoneId)) == zoneIdsToSave.end()) {
+				if (!wxRemoveFile(filePath)) {
+					wxLogError("Failed to delete zone file: %s", filePath);
+				}
+			}
+		}
+	}
+
+	for (const auto& [zoneId, positions] : zoneMap) {
+		auto zoneTable = serializeZoneToToml(zoneId, positions);
+		auto filepath = folderPath + wxString::Format("/%u.toml", zoneId);
+		std::stringstream ss;
+		ss << zoneTable;
+		auto file = wxFile(filepath, wxFile::write);
+		if (file.IsOpened()) {
+			auto zoneData = ss.str();
+			file.Write(zoneData.c_str(), zoneData.length());
+			file.Close();
+		}
+		else {
+			wxLogError("Failed to open file for writing: %s", filepath);
+		}
+	}
+}
+
+std::map<uint16_t, std::vector<Position>> loadZonesFromToml(wxString folderPath) {
+	std::map<uint16_t, std::vector<Position>> zoneMap;
+
+	if (not wxDirExists(folderPath)) {
+		return zoneMap;
+	}
+	auto zoneDir = wxDir(folderPath);
+	if (not zoneDir.IsOpened()) {
+		return zoneMap;
+	}
+	wxString filename;
+	bool open_file = zoneDir.GetFirst(&filename, "*.toml", wxDIR_FILES);
+	while (open_file) {
+		wxString filepath = folderPath + "/" + filename;
+		auto file = wxFile(filepath, wxFile::read);
+		if (file.IsOpened()) {
+			auto fileLength = file.Length();
+			if (fileLength > 0) {
+				std::string fileContent;
+				fileContent.resize(static_cast<size_t>(fileLength));
+				file.Read(&fileContent[0], fileLength);
+				try {
+					toml::table tbl = toml::parse(fileContent);
+					auto zonesArray = tbl["zone"];
+					if (zonesArray && zonesArray.is_array()) {
+						for (const auto& zoneEntry : *zonesArray.as_array()) {
+							if (zoneEntry.is_table()) {
+								const toml::table& zoneTable = *zoneEntry.as_table();
+								auto idVal = zoneTable["id"];
+								auto posArray = zoneTable["positions"];
+								if (idVal && idVal.is_integer() && posArray && posArray.is_array()) {
+									uint16_t zoneId = static_cast<uint16_t>(idVal.value_or(0));
+									std::vector<Position> positions;
+									for (const auto& pos : *posArray.as_array()) {
+										if (pos.is_table()) {
+											const toml::table& posTable = *pos.as_table();
+											uint16_t x = static_cast<uint16_t>(posTable["x"].value_or(0));
+											uint16_t y = static_cast<uint16_t>(posTable["y"].value_or(0));
+											uint8_t z = static_cast<uint8_t>(posTable["z"].value_or(0));
+											positions.emplace_back(Position{ x, y, z });
+										}
+									}
+									zoneMap[zoneId] = std::move(positions);
+								}
+							}
+						}
+					}
+					else {
+						wxLogWarning("Invalid zone file: %s", filepath);
+					}
+				}
+				catch (const toml::parse_error& err) {
+					wxLogError("TOML parse error in file %s: %s", filepath, err.what());
+				}
+			}
+			file.Close();
+		}
+		open_file = zoneDir.GetNext(&filename);
+	}
+	return zoneMap;
+}
+
+void applyZonesToTiles(const std::map<uint16_t, std::vector<Position>>& zoneMap, BaseMap& map) {
+	if (not zoneMap.empty())
+	{
+		for (const auto& [zoneId, positions] : zoneMap)
+		{
+			for (const auto& pos : positions)
+			{
+				Tile* tile = map.getTile(pos);
+				if (tile)
+				{
+					tile->addZoneId(zoneId);
+				}
+			}
+		}
+	}
+}
 
 Item* Item::Create_OTBM(const IOMap& maphandle, BinaryNode* stream)
 {
@@ -407,45 +567,6 @@ bool Container::serializeItemNode_OTBM(const IOMap& maphandle, NodeFileWriteHand
 
 bool IOMapOTBM::getVersionInfo(const FileName& filename, MapVersion& out_ver)
 {
-#if OTGZ_SUPPORT > 0
-	if(filename.GetExt() == "otgz") {
-		// Open the archive
-		std::shared_ptr<struct archive> a(archive_read_new(), archive_read_free);
-		archive_read_support_filter_all(a.get());
-		archive_read_support_format_all(a.get());
-		if(archive_read_open_filename(a.get(), nstr(filename.GetFullPath()).c_str(), 10240) != ARCHIVE_OK)
-			 return false;
-
-		// Loop over the archive entries until we find the otbm file
-		struct archive_entry* entry;
-		while(archive_read_next_header(a.get(), &entry) == ARCHIVE_OK) {
-			std::string entryName = archive_entry_pathname(entry);
-
-			if(entryName == "world/map.otbm") {
-				// Read the OTBM header into temporary memory
-				uint8_t buffer[8096];
-				memset(buffer, 0, 8096);
-
-				// Read from the archive
-				int read_bytes = archive_read_data(a.get(), buffer, 8096);
-
-				// Check so it at least contains the 4-byte file id
-				if(read_bytes < 4)
-					return false;
-
-				// Create a read handle on it
-				std::shared_ptr<NodeFileReadHandle> f(new MemoryNodeFileReadHandle(buffer + 4, read_bytes - 4));
-
-				// Read the version info
-				return getVersionInfo(f.get(), out_ver);
-			}
-		}
-
-		// Didn't find OTBM file, lame
-		return false;
-	}
-#endif
-
 	// Just open a disk-based read handle
 	DiskNodeFileReadHandle f(nstr(filename.GetFullPath()), StringVector(1, "OTBM"));
 	if(!f.isOk())
@@ -482,124 +603,6 @@ bool IOMapOTBM::getVersionInfo(NodeFileReadHandle* f,  MapVersion& out_ver)
 
 bool IOMapOTBM::loadMap(Map& map, const FileName& filename)
 {
-#if OTGZ_SUPPORT > 0
-	if(filename.GetExt() == "otgz") {
-		// Open the archive
-		std::shared_ptr<struct archive> a(archive_read_new(), archive_read_free);
-		archive_read_support_filter_all(a.get());
-		archive_read_support_format_all(a.get());
-		if(archive_read_open_filename(a.get(), nstr(filename.GetFullPath()).c_str(), 10240) != ARCHIVE_OK)
-			 return false;
-
-		// Memory buffers for the houses & spawns
-		std::shared_ptr<uint8_t> house_buffer;
-		std::shared_ptr<uint8_t> spawn_buffer;
-		size_t house_buffer_size = 0;
-		size_t spawn_buffer_size = 0;
-
-		// See if the otbm file has been loaded
-		bool otbm_loaded = false;
-
-		// Loop over the archive entries until we find the otbm file
-		g_gui.SetLoadDone(0, "Decompressing archive...");
-		struct archive_entry* entry;
-		while(archive_read_next_header(a.get(), &entry) == ARCHIVE_OK) {
-			std::string entryName = archive_entry_pathname(entry);
-
-			if(entryName == "world/map.otbm") {
-				// Read the entire OTBM file into a memory region
-				size_t otbm_size = archive_entry_size(entry);
-				std::shared_ptr<uint8_t> otbm_buffer(new uint8_t[otbm_size], [](uint8_t* p) { delete[] p; });
-
-				// Read from the archive
-				size_t read_bytes = archive_read_data(a.get(), otbm_buffer.get(), otbm_size);
-
-				// Check so it at least contains the 4-byte file id
-				if(read_bytes < 4)
-					return false;
-
-				if(read_bytes < otbm_size) {
-					error("Could not read file.");
-					return false;
-				}
-
-				g_gui.SetLoadDone(0, "Loading OTBM map...");
-
-				// Create a read handle on it
-				std::shared_ptr<NodeFileReadHandle> f(
-					new MemoryNodeFileReadHandle(otbm_buffer.get() + 4, otbm_size - 4));
-
-				// Read the version info
-				if(!loadMap(map, *f.get())) {
-					error("Could not load OTBM file inside archive");
-					return false;
-				}
-
-				otbm_loaded = true;
-			} else if(entryName == "world/houses.xml") {
-				house_buffer_size = archive_entry_size(entry);
-				house_buffer.reset(new uint8_t[house_buffer_size]);
-
-				// Read from the archive
-				size_t read_bytes = archive_read_data(a.get(), house_buffer.get(), house_buffer_size);
-
-				// Check so it at least contains the 4-byte file id
-				if(read_bytes < house_buffer_size) {
-					house_buffer.reset();
-					house_buffer_size = 0;
-					warning("Failed to decompress houses.");
-				}
-			} else if(entryName == "world/spawns.xml") {
-				spawn_buffer_size = archive_entry_size(entry);
-				spawn_buffer.reset(new uint8_t[spawn_buffer_size]);
-
-				// Read from the archive
-				size_t read_bytes = archive_read_data(a.get(), spawn_buffer.get(), spawn_buffer_size);
-
-				// Check so it at least contains the 4-byte file id
-				if(read_bytes < spawn_buffer_size) {
-					spawn_buffer.reset();
-					spawn_buffer_size = 0;
-					warning("Failed to decompress spawns.");
-				}
-			}
-		}
-
-		if(!otbm_loaded) {
-			error("OTBM file not found inside archive.");
-			return false;
-		}
-
-		// Load the houses from the stored buffer
-		if(house_buffer.get() && house_buffer_size > 0) {
-			pugi::xml_document doc;
-			pugi::xml_parse_result result = doc.load_buffer(house_buffer.get(), house_buffer_size);
-			if(result) {
-				if(!loadHouses(map, doc)) {
-					warning("Failed to load houses.");
-				}
-			} else {
-				warning("Failed to load houses due to XML parse error.");
-			}
-		}
-
-		// Load the spawns from the stored buffer
-		if(spawn_buffer.get() && spawn_buffer_size > 0) {
-			pugi::xml_document doc;
-			pugi::xml_parse_result result = doc.load_buffer(spawn_buffer.get(), spawn_buffer_size);
-			if(result) {
-				if(!loadSpawns(map, doc)) {
-					warning("Failed to load spawns.");
-				}
-			} else {
-				warning("Failed to load spawns due to XML parse error.");
-			}
-		}
-
-		return true;
-	}
-#endif
-
 	DiskNodeFileReadHandle f(nstr(filename.GetFullPath()), StringVector(1, "OTBM"));
 	if(!f.isOk()) {
 		error(("Couldn't open file for reading\nThe error reported was: " + wxstr(f.getErrorMessage())).wc_str());
@@ -618,6 +621,14 @@ bool IOMapOTBM::loadMap(Map& map, const FileName& filename)
 		warning("Failed to load spawns.");
 		map.spawnfile = nstr(filename.GetName()) + "-spawn.xml";
 	}
+
+	auto mapName = nstr(filename.GetName());
+
+	auto zoneDir = filename.GetPath(wxPATH_GET_SEPARATOR | wxPATH_GET_VOLUME) + mapName + "-zones";
+
+	auto zoneMap = loadZonesFromToml(zoneDir);
+	applyZonesToTiles(zoneMap, map);
+
 	return true;
 }
 
@@ -775,8 +786,6 @@ bool IOMapOTBM::loadMap(Map& map, NodeFileReadHandle& f)
 						}
 					}
 
-					//printf("So far so good\n");
-
 					uint8_t attribute;
 					while(tileNode->getU8(attribute)) {
 						switch(attribute) {
@@ -785,19 +794,8 @@ bool IOMapOTBM::loadMap(Map& map, NodeFileReadHandle& f)
 								if(!tileNode->getU32(flags)) {
 									warning("Invalid tile flags of tile on %d:%d:%d", pos.x, pos.y, pos.z);
 								}
-								tile->setMapFlags(flags);
-								if (flags & TILESTATE_ZONE_BRUSH)
-								{
-									uint16_t zoneId = 0;
-									do
-									{
-										if (!tileNode->getU16(zoneId))
-											warning("Invalid zone id of tile on %d:%d:%d", pos.x, pos.y, pos.z);
 
-										if (zoneId != 0)
-											tile->addZoneId(zoneId);
-									} while (zoneId != 0);
-								}
+								tile->setMapFlags(flags);
 								break;
 							}
 							case OTBM_ATTR_ITEM: {
@@ -815,8 +813,6 @@ bool IOMapOTBM::loadMap(Map& map, NodeFileReadHandle& f)
 							}
 						}
 					}
-
-					//printf("Didn't die in loop\n");
 
 					for(BinaryNode* itemNode = tileNode->getChild(); itemNode != nullptr; itemNode = itemNode->advance()) {
 						Item* item = nullptr;
@@ -1265,6 +1261,9 @@ bool IOMapOTBM::saveMap(Map& map, const FileName& identifier)
 
 	g_gui.SetLoadDone(99, "Saving houses...");
 	saveHouses(map, identifier);
+
+	saveZonesToToml(zoneMap, identifier, map);
+
 	return true;
 }
 
@@ -1366,8 +1365,9 @@ bool IOMapOTBM::saveMap(Map& map, NodeFileWriteHandle& f)
 					if (save_tile->getMapFlags() & TILESTATE_ZONE_BRUSH)
 					{
 						for (const auto& zoneId : save_tile->getZoneIds())
-							f.addU16(zoneId);
-						f.addU16(0);
+						{
+							zoneMap[zoneId].push_back(save_tile->getPosition());
+						}
 					}
 				}
 

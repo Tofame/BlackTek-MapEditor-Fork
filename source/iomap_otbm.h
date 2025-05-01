@@ -18,6 +18,8 @@
 #ifndef RME_OTBM_MAP_IO_H_
 #define RME_OTBM_MAP_IO_H_
 
+#include <toml++/toml.hpp>
+
 #include "iomap.h"
 
 // Pragma pack is VERY important since otherwise it won't be able to load the structs correctly
@@ -122,6 +124,8 @@ public:
 	IOMapOTBM(MapVersion ver) { version = ver; }
 	~IOMapOTBM() {}
 
+	void saveZonesToToml(const std::map<uint16_t, std::vector<Position>>& zoneMap, const wxFileName& dir, Map& map);
+
 	static bool getVersionInfo(const FileName& identifier, MapVersion& out_ver);
 
 	virtual bool loadMap(Map& map, const FileName& identifier);
@@ -141,6 +145,7 @@ protected:
 	bool saveSpawns(Map& map, pugi::xml_document& doc);
 	bool saveHouses(Map& map, const FileName& dir);
 	bool saveHouses(Map& map, pugi::xml_document& doc);
+	//void saveZonesToToml(const toml::table& zonesToml, const wxFileName& dir);
 };
 
 #endif

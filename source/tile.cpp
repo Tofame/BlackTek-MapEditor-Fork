@@ -71,14 +71,16 @@ Tile* Tile::deepCopy(BaseMap& map) const
 	Tile* copy = map.allocator.allocateTile(location);
 	copy->flags = flags;
 	copy->house_id = house_id;
-	if(spawn) copy->spawn = spawn->deepCopy();
-	if(creature) copy->creature = creature->deepCopy();
+	if (spawn) copy->spawn = spawn->deepCopy();
+	if (creature) copy->creature = creature->deepCopy();
 	// Spawncount & exits are not transferred on copy!
-	if(ground) copy->ground = ground->deepCopy();
+	if (ground) copy->ground = ground->deepCopy();
 
-	for(const Item* item : items) {
+	for (const Item* item : items) {
 		copy->items.push_back(item->deepCopy());
 	}
+
+	copy->setZoneIds(this);
 	return copy;
 }
 

@@ -201,6 +201,7 @@ public: //Functions
 	void removeZoneId(uint16_t _zoneId);
 	void clearZoneId();
 	void setZoneIds(Tile* tile);
+	void setZoneIds(const Tile* tile);
 	const std::vector<uint16_t>& getZoneIds() const;
 	uint16_t getZoneId() const;
 
@@ -298,6 +299,12 @@ inline void Tile::clearZoneId()
 }
 
 inline void Tile::setZoneIds(Tile* tile)
+{
+	zoneIds.clear();
+	zoneIds.assign(tile->getZoneIds().begin(), tile->getZoneIds().end());
+}
+
+inline void Tile::setZoneIds(const Tile* tile)
 {
 	zoneIds.clear();
 	zoneIds.assign(tile->getZoneIds().begin(), tile->getZoneIds().end());

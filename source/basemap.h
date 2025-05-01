@@ -115,8 +115,62 @@ public:
 
 	uint64_t getTileCount() const noexcept { return tilecount; }
 
-public:
+	void addZoneIdAt(const Position& pos, uint16_t zoneId) {
+		auto& zones = zoneIdsByPosition[pos];
+		if (std::find(zones.begin(), zones.end(), zoneId) == zones.end()) {
+			zones.push_back(zoneId);
+		}
+
+		// Also apply to current tile if it exists
+		Tile* tile = getTile(pos);
+		if (tile) {
+			tile->addZoneId(zoneId);
+		}
+	}
+
+	void clearZoneIdsAt(const Position& pos) {
+		zoneIdsByPosition.erase(pos);
+
+		// Also apply to current tile if it exists
+		Tile* tile = getTile(pos);
+		if (tile) {
+			tile->clearZoneId();
+		}
+	}
+
+	const std::vector<uint16_t>& getZoneIdsAt(const Position& pos) const {
+		static std::vector<uint16_t> emptyVector;
+		auto it = zoneIdsByPosition.find(pos);
+		if (it == zoneIdsByPosition.end()) {
+			return emptyVector;
+		}
+		return it->second;
+	}
+
+	const std::map<Position, std::vector<uint16_t>>& getZoneStorage() const {
+		return zoneIdsByPosition;
+	}
+
+	void clearAllZones() {
+		zoneIdsByPosition.clear();
+
+		// Also clear zones from all tiles
+		for (MapIterator it = begin(); it != end(); ++it) {
+			TileLocation* loc = *it;
+			if (loc) {
+				Tile* tile = loc->get();
+				if (tile) {
+					tile->clearZoneId();
+					tile->unsetMapFlags(TILESTATE_ZONE_BRUSH); // Assuming this is your zone flag
+				}
+			}
+		}
+	}
+
 	MapAllocator allocator;
+
+private:
+	std::map<Position, std::vector<uint16_t>> zoneIdsByPosition;
 
 protected:
 	virtual void updateUniqueIds(Tile* old_tile, Tile* new_tile) { }

@@ -1628,11 +1628,11 @@ void MapDrawer::DrawTile(TileLocation* location)
 				g /= 2;
 			}
 
-			if (options.show_zone_areas && tile->getMapFlags() & TILESTATE_ZONE_BRUSH) {
+			if (options.show_zone_areas and not tile->getZoneIds().empty()) {
 				size_t zones = tile->getZoneIds().size();
 				uint16_t r16 = 0, g16 = 0, b16 = 0;
-				for (const auto& zoneId : tile->getZoneIds()) {
-					const uint16_t colorIndex = zoneId % colors.size();
+				for (const auto zoneId : tile->getZoneIds()) {
+					const uint16_t colorIndex = zoneId % 42;
 					const Color colour = colors.at(colorIndex);
 
 					r16 += std::get<0>(colour);
