@@ -1,13 +1,8 @@
-# CMake
-CMakeCache.txt
-CMakeFiles
-cmake_install.cmake
-Makefile
-build/
-build.*/
-build-debug
-build-release
-CMakeLists.txt.user*
+# Build Output
+/build
+
+*.dll
+*.exe
 
 # RME
 rme
@@ -25,7 +20,12 @@ data/user
 *.db
 *.opendb
 *.user
-*.vs
+*.pdb
+*.filters
+/.vs
+**.sln
+**.vcxproj
+**.vcxproj.user
 
 vcproj/ipch/
 vcproj/Beta Release/
@@ -40,6 +40,9 @@ vcproj/Installer/Beta Release/
 vcproj/Installer/Debug/
 vcproj/Installer/Release/
 .vscode/
+
+# VCPKG Dependencies
+/vcpkg_installed
 
 # Xcode
 xcuserdata
