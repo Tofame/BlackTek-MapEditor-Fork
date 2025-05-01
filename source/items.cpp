@@ -969,62 +969,60 @@ bool ItemDatabase::loadFromGameXml(const FileName& identifier, wxString& error, 
 
 bool ItemDatabase::loadFromGameToml(const wxString& filename, wxString& error, wxArrayString& warnings)
 {
-    try {
-        auto table = toml::parse_file(filename.ToStdString());
-        auto itemsArray = table["items"].as_array();
-        if (!itemsArray) {
-            error = "No 'items' array found in " + filename;
-            return false;
-        }
+	try {
+		auto table = toml::parse_file(filename.ToStdString());
+		auto itemsArray = table["items"].as_array();
+		if (!itemsArray) {
+			error = "No 'items' array found in " + filename;
+			return false;
+		}
 
-        for (const auto& itemNode : *itemsArray) {
-            auto* itemTable = itemNode.as_table();
-            if (!itemTable) {
-                warnings.push_back("Invalid item entry in " + filename);
-                continue;
-            }
+		for (const auto& itemNode : *itemsArray) {
+			auto* itemTable = itemNode.as_table();
+			if (!itemTable) {
+				warnings.push_back("Invalid item entry in " + filename);
+				continue;
+			}
 
-            auto idNode = (*itemTable)["id"];
-            if (!idNode || !idNode.is_integer()) {
-                warnings.push_back("Item missing 'id' or 'id' is not an integer in " + filename);
-                continue;
-            }
-            auto idValue = idNode.value<uint16_t>();
-            if (!idValue) {
-                warnings.push_back("Invalid 'id' value in " + filename);
-                continue;
-            }
-            uint16_t id = *idValue;
-            if (!isValidID(id)) {
-                warnings.push_back("Invalid item id: " + wxString::Format("%d", id) + " in " + filename);
-                continue;
-            }
+			auto idNode = (*itemTable)["id"];
+			if (!idNode || !idNode.is_integer()) {
+				warnings.push_back("Item missing 'id' or 'id' is not an integer in " + filename);
+				continue;
+			}
+			auto idValue = idNode.value<uint16_t>();
+			if (!idValue) {
+				warnings.push_back("Invalid 'id' value in " + filename);
+				continue;
+			}
+			uint16_t id = *idValue;
+			if (!isValidID(id)) {
+				warnings.push_back("Invalid item id: " + wxString::Format("%d", id) + " in " + filename);
+				continue;
+			}
 
-            ItemType* item = items[id];
+			ItemType* item = items[id];
 
-            if (auto nameNode = (*itemTable)["name"]) {
-                if (auto name = nameNode.value<std::string>()) {
-                    item->name = *name;
-                }
-            }
+			if (auto nameNode = (*itemTable)["name"]) {
+				if (auto name = nameNode.value<std::string>()) {
+					item->name = *name;
+				}
+			}
 
-            if (auto articleNode = (*itemTable)["article"]) {
-                if (auto article = articleNode.value<std::string>()) {
-                    item->article = *article;
-                }
-            }
+			if (auto articleNode = (*itemTable)["article"]) {
+				if (auto article = articleNode.value<std::string>()) {
+					item->article = *article;
+				}
+			}
 
-            if (auto attrsNode = (*itemTable)["attributes"]) {
-                if (auto attrs = attrsNode.as_table()) {
-                    setItemAttributes(item, attrs);
-                }
-            }
-        }
-        return true;
-    } catch (const toml::parse_error& e) {
-        error = "Error parsing TOML file " + filename + ": " + e.what();
-        return false;
-    }
+			setItemAttributes(item, itemTable);
+		}
+
+		return true;
+	}
+	catch (const toml::parse_error& e) {
+		error = "Error parsing TOML file " + filename + ": " + e.what();
+		return false;
+	}
 }
 
 void ItemDatabase::setItemAttributes(ItemType* item, const toml::table* attrs)
@@ -1093,16 +1091,20 @@ void ItemDatabase::setItemAttributes(ItemType* item, const toml::table* attrs)
 			if (value == "down") {
 				item->floorChangeDown = true;
 				item->floorChange = true;
-			} else if (value == "north") {
+			}
+			else if (value == "north") {
 				item->floorChangeNorth = true;
 				item->floorChange = true;
-			} else if (value == "south") {
+			}
+			else if (value == "south") {
 				item->floorChangeSouth = true;
 				item->floorChange = true;
-			} else if (value == "west") {
+			}
+			else if (value == "west") {
 				item->floorChangeWest = true;
 				item->floorChange = true;
-			} else if (value == "east") {
+			}
+			else if (value == "east") {
 				item->floorChangeEast = true;
 				item->floorChange = true;
 			}
@@ -1112,6 +1114,7 @@ void ItemDatabase::setItemAttributes(ItemType* item, const toml::table* attrs)
 		if (auto bp = blockprojectile->value<bool>()) item->blockMissiles = *bp;
 	}
 }
+
 
 bool ItemDatabase::loadFromGameTomlDir(const wxString& dirPath, wxString& error, wxArrayString& warnings)
 {
