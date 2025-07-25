@@ -3,12 +3,16 @@
   "name": "black-tek-map-editor",
   "version": "0.0.0.1",
   "dependencies": [
-    "wxwidgets",
+    {
+      "name": "wxwidgets",
+      "default-features": true,
+       "version>=": "3.2.7"
+    },
     "freeglut",
     "asio",
     "nlohmann-json",
     "fmt",
     "tomlplusplus"
   ],
-  "builtin-baseline": "215a2535590f1f63788ac9bd2ed58ad15e6afdff"
+  "builtin-baseline": "52572867982f5265a7c71f59be1a006dfc49c90c"
 }
