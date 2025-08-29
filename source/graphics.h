@@ -329,7 +329,7 @@ public:
 		return it != signatureToVersion.end() ? it->second : -1;
 	}
 	int getProtocolVersionByDatSignature() {
-		return getVersionByDatSignature(datSignature);
+		return getProtocolVersionByDatSignature(datSignature);
 	}
 
 private:;
