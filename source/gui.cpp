@@ -378,6 +378,16 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		return false;
 	}
 
+	// Load signatures.toml
+	g_gui.SetLoadDone(25, "Loading signatures.toml file...");
+	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
+	if(!g_gui.gfx.loadSignatures(exeDir + "signatures.toml"), error) {
+		error = "Couldn't load signatures.toml: " + error;
+		g_gui.DestroyLoadBar();
+		UnloadVersion();
+		return false;
+	}
+
 	g_gui.SetLoadDone(20, "Loading items.otb file...");
 	if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
 		error = "Couldn't load items.otb: " + error;

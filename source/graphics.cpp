@@ -30,6 +30,7 @@
 #include <wx/dir.h>
 #include <wx/rawbmp.h>
 #include "pngfiles.h"
+#include <toml++/toml.hpp>
 
 // All 133 template colors
 static uint32_t TemplateOutfitLookupTable[] = {
@@ -1720,4 +1721,80 @@ void Animator::calculateSynchronous()
 		}
 		last_time = time;
 	}
+}
+
+static bool parseHexSignature(const std::string& str, uint32_t& outValue) {
+	std::istringstream iss(str);
+	iss >> std::hex >> outValue;
+	return !iss.fail();
+}
+
+bool GraphicManager::loadSignatures(const std::string& filename, wxString& error)
+{
+	std::ifstream file(filename);
+	if (!file.is_open()) {
+		error = "Could not open signatures file: " + wxString::FromUTF8(filename);
+		return false;
+	}
+
+	std::string line;
+	int currentVersion = -1;
+	std::string currentSigStr;
+
+	while (std::getline(file, line)) {
+		// trim whitespace
+		line.erase(0, line.find_first_not_of(" \t\r\n"));
+		if (line.empty() || line[0] == '#')
+			continue;
+
+		if (line.find("[[clients]]") != std::string::npos) {
+			currentVersion = -1;
+			currentSigStr.clear();
+		}
+		else if (line.rfind("version", 0) == 0) {
+			size_t pos = line.find('=');
+			if (pos == std::string::npos) continue;
+
+			std::istringstream iss(line.substr(pos + 1));
+			int ver;
+			if (!(iss >> ver)) {
+				error = "Invalid version entry: " + wxString::FromUTF8(line);
+				return false;
+			}
+			currentVersion = ver;
+		}
+		else if (line.rfind("datSignature", 0) == 0) {
+			size_t pos = line.find('=');
+			if (pos == std::string::npos) continue;
+
+			std::string sig = line.substr(pos + 1);
+			// remove spaces and quotes
+			sig.erase(0, sig.find_first_not_of(" \t\""));
+			sig.erase(sig.find_last_not_of(" \t\"") + 1);
+
+			currentSigStr = sig;
+		}
+
+		// when we have both version + signature, store mapping
+		if (currentVersion != -1 && !currentSigStr.empty()) {
+			uint32_t sigVal = 0;
+			if (!parseHexSignature(currentSigStr, sigVal)) {
+				error = "Invalid hex signature: " + wxString::FromUTF8(currentSigStr);
+				return false;
+			}
+
+			signatureToVersion[sigVal] = currentVersion;
+
+			// reset for next [[clients]]
+			currentVersion = -1;
+			currentSigStr.clear();
+		}
+	}
+
+	if (signatureToVersion.empty()) {
+		error = "No valid signatures found in file: " + wxString::FromUTF8(filename);
+		return false;
+	}
+
+	return true;
 }
