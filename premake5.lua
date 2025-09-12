@@ -14,7 +14,6 @@ workspace "Black-Tek-Mapeditor"
       files { "source/**.cpp", "source/**.h" }
       flags { "LinkTimeOptimization", "MultiProcessorCompile" }
       vectorextensions "AVX"
-      enableunitybuild "On"
 
       -- Add wxWidgets, zlib, fmt, OpenGL, GLUT, and wxGL dependencies for Linux
       filter "system:linux"
@@ -48,6 +47,7 @@ workspace "Black-Tek-Mapeditor"
          characterset "MBCS"
          debugformat "c7"
          vsprops { VcpkgEnableManifest = "true" }
+         buildoptions { "/bigobj", "/utf-8" }
          linkoptions { "/IGNORE:4099" }
       filter {}
 
