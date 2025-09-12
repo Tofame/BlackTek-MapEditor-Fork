@@ -382,20 +382,20 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	// Load signatures.toml
 	g_gui.SetLoadDone(15, "Loading signatures.toml file...");
 	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
-	if(!g_gui.gfx.loadSignatures(exeDir + "signatures.toml", error)) {
+	if(!g_gui.gfx.loadSignatures(exeDir + "\\signatures.toml", error)) {
 		error = "Couldn't load signatures.toml: " + error;
 		g_gui.DestroyLoadBar();
 		UnloadVersion();
 		return false;
-	} else {
+	} /* // Debug tests if signatures.toml work properly
+	else {
 		error = wxString::Format(
-			"apsoka %d 10.98 %d",
+			"[Test 1077, 1098] %d %d",
 			g_gui.gfx.getProtocolVersionByDatSignature(14558),
 			g_gui.gfx.getProtocolVersionByDatSignature(17059)
 		);
 		return false;
-	}
-
+	} */
 
 	g_gui.SetLoadDone(20, "Loading items.otb file...");
 	if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
