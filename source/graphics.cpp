@@ -1859,10 +1859,14 @@ bool GraphicManager::loadSignatures(const std::string& filename, wxString& error
         for (const auto& clientNode : *clientsArray.as_array()) {
             if (!clientNode.is_table()) continue;
 
+			SignatureData sd = SignatureData();
+
             const toml::table& clientTable = *clientNode.as_table();
 
             auto verVal = clientTable["version"];
             auto sigValNode = clientTable["datSignature"];
+            auto majorVal = static_cast<int>(clientTable["majorVersion"].value_or(0));
+            auto minorVal = static_cast<int>(clientTable["minorVersion"].value_or(0));
 
             if (!verVal || !verVal.is_integer() || !sigValNode || !sigValNode.is_string()) {
                 error = "Invalid entry in signatures file.";
@@ -1878,7 +1882,10 @@ bool GraphicManager::loadSignatures(const std::string& filename, wxString& error
                 return false;
             }
 
-            signatureToVersion[sigVal] = ver;
+			sd.protocolVersion = ver;
+			sd.majorVersion = majorVal;
+			sd.minorVersion = minorVal;
+			signatureDatas[sigVal] = sd;
         }
 
     } catch (const toml::parse_error& err) {
@@ -1889,7 +1896,7 @@ bool GraphicManager::loadSignatures(const std::string& filename, wxString& error
         return false;
     }
 
-    if (signatureToVersion.empty()) {
+    if (signatureDatas.empty()) {
         error = "No valid signatures found in file: " + wxString::FromUTF8(filename);
         return false;
     }

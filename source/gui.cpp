@@ -375,8 +375,8 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	else {
 		error = wxString::Format(
 			"[Test 1077, 1098] %d %d",
-			g_gui.gfx.getProtocolVersionByDatSignature(14558),
-			g_gui.gfx.getProtocolVersionByDatSignature(17059)
+			g_gui.gfx.getSignatureData(14558).protocolVersion,
+			g_gui.gfx.getSignatureData(17059).protocolVersion
 		);
 		return false;
 	} */
@@ -412,12 +412,15 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 			UnloadVersion();
 			return false;
 		}
+		//warnings.push_back(wxString::Format("Major,Minor,BuildNumber: %d %d %d", g_items.MajorVersion, g_items.MinorVersion, g_items.BuildNumber));
 	} else {
 		// to-do do MajorVersion. Maybe lets just do own MajorVersion rather than lying that its some 1,2,3... lets do 4 (or 10 or w/e) and say its items.dat forever.
 		// or use those 32 bits for something else.
-		g_items.MajorVersion = 3; // 10.98's otb's major version
-		g_items.MinorVersion = g_gui.gfx.getProtocolVersionByDatSignature();
-		//warnings.push_back(wxString::Format("Detected Protocol: %d", g_items.MinorVersion));
+		const auto& signatureData = g_gui.gfx.getSignatureData();
+		g_items.MajorVersion = signatureData.majorVersion; // to-do 10.98's otb's major version, either add to signatures.toml, or like comment above, start using for smth else.
+		g_items.MinorVersion = signatureData.minorVersion;
+		g_items.BuildNumber = 1; // to-do - information what is this, idk, what is that. But its in [10.98 items.otb]'s with value 1.
+		//warnings.push_back(wxString::Format("Detected Protocol: %d %d %d", signatureData.protocolVersion, signatureData.majorVersion, signatureData.minorVersion));
 	}
 
 	g_gui.SetLoadDone(30, "Loading items data...");

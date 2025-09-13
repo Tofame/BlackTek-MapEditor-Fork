@@ -1,215 +1,371 @@
 [[clients]]
+version = 740
+datSignature = "41BF619C"
+majorVersion = 1
+minorVersion = 1
+
+[[clients]]
+version = 750
+datSignature = "41BF619C"
+majorVersion = 1
+minorVersion = 1
+
+[[clients]]
+version = 755
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 2
+
+[[clients]]
+version = 760
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 3
+
+[[clients]]
+version = 770
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 3
+
+[[clients]]
+version = 780
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 4
+
+[[clients]]
+version = 790
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 5
+
+[[clients]]
+version = 792
+datSignature = "439D5A33"
+majorVersion = 1
+minorVersion = 6
+
+[[clients]]
 version = 800
 datSignature = "467FD7E6"
+majorVersion = 2
+minorVersion = 7
 
 [[clients]]
 version = 810
 datSignature = "475D3747"
+majorVersion = 2
+minorVersion = 8
 
 [[clients]]
 version = 811
 datSignature = "47F60E37"
+majorVersion = 2
+minorVersion = 9
 
 [[clients]]
 version = 820
 datSignature = "486905AA"
+majorVersion = 3
+minorVersion = 10
 
 [[clients]]
 version = 830
 datSignature = "48DA1FB6"
+majorVersion = 3
+minorVersion = 11
 
 [[clients]]
 version = 840
 datSignature = "493D607A"
+majorVersion = 3
+minorVersion = 12
 
 [[clients]]
 version = 841
 datSignature = "49B7CC19"
+majorVersion = 3
+minorVersion = 13
 
 [[clients]]
 version = 842
 datSignature = "49C233C9"
+majorVersion = 3
+minorVersion = 14
 
 [[clients]]
 version = 850
 datSignature = "4A49C5EB"
+majorVersion = 3
+minorVersion = 15
 
 [[clients]]
 version = 850
 datSignature = "4A4CC0DC"
+majorVersion = 3
+minorVersion = 15
 
 [[clients]]
 version = 850
 datSignature = "4AE97492"
+majorVersion = 3
+minorVersion = 15
 
 [[clients]]
 version = 854
 datSignature = "4B1E2CAA"
+majorVersion = 3
+minorVersion = 17
 
 [[clients]]
 version = 854
 datSignature = "4B0D46A9"
+majorVersion = 3
+minorVersion = 17
 
 [[clients]]
 version = 854
 datSignature = "4B28B89E"
+majorVersion = 3
+minorVersion = 17
 
 [[clients]]
 version = 855
 datSignature = "4B98FF53"
+majorVersion = 3
+minorVersion = 18
 
 [[clients]]
 version = 860
 datSignature = "4C28B721"
+majorVersion = 3
+minorVersion = 20
 
 [[clients]]
 version = 860
 datSignature = "4C28B721"
+majorVersion = 3
+minorVersion = 20
 
 [[clients]]
 version = 861
 datSignature = "4C6A4CBC"
+majorVersion = 3
+minorVersion = 21
 
 [[clients]]
 version = 862
 datSignature = "4C973450"
+majorVersion = 3
+minorVersion = 22
 
 [[clients]]
 version = 870
 datSignature = "4CFE22C5"
+majorVersion = 3
+minorVersion = 23
 
 [[clients]]
 version = 871
 datSignature = "4D41979E"
+majorVersion = 3
+minorVersion = 24
 
 [[clients]]
 version = 872
 datSignature = "4DAD1A1A"
+majorVersion = 3
+minorVersion = 25
 
 [[clients]]
 version = 873
 datSignature = "4DBAA20B"
+majorVersion = 3
+minorVersion = 26
 
 [[clients]]
 version = 900
 datSignature = "4DBAA20B"
+majorVersion = 3
+minorVersion = 27
 
 [[clients]]
 version = 910
 datSignature = "4E12DAFF"
+majorVersion = 3
+minorVersion = 28
 
 [[clients]]
 version = 920
 datSignature = "4E807C08"
+majorVersion = 3
+minorVersion = 29
 
 [[clients]]
 version = 940
 datSignature = "4EE71DE5"
+majorVersion = 3
+minorVersion = 30
 
 [[clients]]
 version = 944
 datSignature = "4F0EEFBB"
+majorVersion = 3
+minorVersion = 31
 
 [[clients]]
 version = 944
 datSignature = "4F105168"
+majorVersion = 3
+minorVersion = 31
 
 [[clients]]
 version = 944
 datSignature = "4F16C0D7"
+majorVersion = 3
+minorVersion = 31
 
 [[clients]]
 version = 944
 datSignature = "4F3131CF"
+majorVersion = 3
+minorVersion = 31
 
 [[clients]]
 version = 946
 datSignature = "4F6B341F"
+majorVersion = 3
+minorVersion = 35
 
 [[clients]]
 version = 950
 datSignature = "4F75B7AB"
+majorVersion = 3
+minorVersion = 36
 
 [[clients]]
 version = 952
 datSignature = "4F857F6C"
+majorVersion = 3
+minorVersion = 37
 
 [[clients]]
 version = 953
 datSignature = "4FA11252"
+majorVersion = 3
+minorVersion = 38
 
 [[clients]]
 version = 954
 datSignature = "4FD5956B"
+majorVersion = 3
+minorVersion = 39
 
 [[clients]]
 version = 960
 datSignature = "4FFA74CC"
+majorVersion = 3
+minorVersion = 40
 
 [[clients]]
 version = 961
 datSignature = "50226F9D"
+majorVersion = 3
+minorVersion = 41
 
 [[clients]]
 version = 963
 datSignature = "503CB933"
+majorVersion = 3
+minorVersion = 42
 
 [[clients]]
 version = 970
 datSignature = "5072A490"
+majorVersion = 3
+minorVersion = 43
 
 [[clients]]
 version = 980
 datSignature = "50C70674"
+majorVersion = 3
+minorVersion = 44
 
 [[clients]]
 version = 981
 datSignature = "50D1C5B6"
+majorVersion = 3
+minorVersion = 45
 
 [[clients]]
 version = 982
 datSignature = "512CAD09"
+majorVersion = 3
+minorVersion = 46
 
 [[clients]]
 version = 983
 datSignature = "51407B67"
+majorVersion = 3
+minorVersion = 47
 
 [[clients]]
 version = 985
 datSignature = "51641A1B"
+majorVersion = 3
+minorVersion = 48
 
 [[clients]]
 version = 986
 datSignature = "5170E904"
+majorVersion = 3
+minorVersion = 49
 
 [[clients]]
 version = 1010
 datSignature = "51E3F8C3"
+majorVersion = 3
+minorVersion = 50
 
 [[clients]]
 version = 1020
 datSignature = "5236F129"
+majorVersion = 3
+minorVersion = 51
 
 [[clients]]
 version = 1021
 datSignature = "526A5068"
+majorVersion = 3
+minorVersion = 52
 
 [[clients]]
 version = 1030
 datSignature = "52A59036"
+majorVersion = 3
+minorVersion = 53
 
 [[clients]]
 version = 1031
 datSignature = "52AED581"
+majorVersion = 3
+minorVersion = 54
 
 [[clients]]
 version = 1041
 datSignature = "5383504E"
+majorVersion = 3
+minorVersion = 55
 
 [[clients]]
 version = 1077
 datSignature = "38DE"
+majorVersion = 3
+minorVersion = 56
 
 [[clients]]
 version = 1098
 datSignature = "42A3"
+majorVersion = 3
+minorVersion = 57
