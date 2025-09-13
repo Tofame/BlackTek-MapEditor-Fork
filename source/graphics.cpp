@@ -1836,70 +1836,74 @@ static bool parseHexSignature(const std::string& str, uint32_t& outValue) {
 	return !iss.fail();
 }
 
-bool GraphicManager::loadSignatures(const std::string& filename, wxString& error) {
-    try {
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            error = "Could not open signatures file: " + wxString::FromUTF8(filename);
-            return false;
-        }
+bool GraphicManager::loadSignatures(const std::string& filePath, wxString& errorMessage) {
+	try {
+		std::ifstream fileStream(filePath);
+		if (!fileStream.is_open()) {
+			errorMessage = "Could not open signature file: " + wxString::FromUTF8(filePath);
+			return false;
+		}
 
-        std::stringstream ss;
-        ss << file.rdbuf();
-        std::string fileContent = ss.str();
+		std::stringstream fileContentStream;
+		fileContentStream << fileStream.rdbuf();
 
-        toml::table tbl = toml::parse(fileContent);
+		toml::table signatureTable = toml::parse(fileContentStream);
 
-        auto clientsArray = tbl["clients"];
-        if (!clientsArray || !clientsArray.is_array()) {
-            error = "Invalid or missing [[clients]] array in signatures file.";
-            return false;
-        }
+		auto clientsArray = signatureTable["clients"];
+		if (!clientsArray || !clientsArray.is_array()) {
+			errorMessage = "Invalid or missing 'clients' array in signatures file.";
+			return false;
+		}
 
-        for (const auto& clientNode : *clientsArray.as_array()) {
-            if (!clientNode.is_table()) continue;
+		for (const auto& clientNode : *clientsArray.as_array()) {
+			if (!clientNode.is_table()) {
+				continue;
+			}
 
-			SignatureData sd = SignatureData();
+			const toml::table& clientData = *clientNode.as_table();
 
-            const toml::table& clientTable = *clientNode.as_table();
+			// Extract values
+			auto protocolVersionValue = clientData["version"];
+			auto signatureValueNode = clientData["datSignature"];
+			auto majorVersionValue = clientData["majorVersion"];
+			auto minorVersionValue = clientData["minorVersion"];
 
-            auto verVal = clientTable["version"];
-            auto sigValNode = clientTable["datSignature"];
-            auto majorVal = static_cast<int>(clientTable["majorVersion"].value_or(0));
-            auto minorVal = static_cast<int>(clientTable["minorVersion"].value_or(0));
+			if (!protocolVersionValue || !protocolVersionValue.is_integer() ||
+				!signatureValueNode || !signatureValueNode.is_string()) {
+				errorMessage = "Invalid or missing 'version' or 'datSignature' fields in a client entry.";
+				return false;
+			}
 
-            if (!verVal || !verVal.is_integer() || !sigValNode || !sigValNode.is_string()) {
-                error = "Invalid entry in signatures file.";
-                return false;
-            }
+			int protocolVersion = static_cast<int>(protocolVersionValue.value_or(0));
+			std::string signatureString = signatureValueNode.value_or("");
 
-            int ver = static_cast<int>(verVal.value_or(0));
-            std::string sigStr = sigValNode.value_or("");
+			uint32_t signatureValue = 0;
+			if (!parseHexSignature(signatureString, signatureValue)) {
+				errorMessage = "Invalid hexadecimal signature format: " + wxString::FromUTF8(signatureString);
+				return false;
+			}
 
-            uint32_t sigVal = 0;
-            if (!parseHexSignature(sigStr, sigVal)) {
-                error = "Invalid hex signature: " + wxString::FromUTF8(sigStr);
-                return false;
-            }
+			SignatureData signatureRecord;
+			signatureRecord.protocolVersion = protocolVersion;
+			signatureRecord.majorVersion = static_cast<int>(majorVersionValue.value_or(0));
+			signatureRecord.minorVersion = static_cast<int>(minorVersionValue.value_or(0));
 
-			sd.protocolVersion = ver;
-			sd.majorVersion = majorVal;
-			sd.minorVersion = minorVal;
-			signatureDatas[sigVal] = sd;
-        }
+			signatureDatas[signatureValue] = signatureRecord;
+		}
 
-    } catch (const toml::parse_error& err) {
-        error = "TOML parse error: " + wxString::FromUTF8(std::string(err.description()));
-        return false;
-    } catch (const std::exception& ex) {
-        error = "Unexpected error: " + wxString::FromUTF8(ex.what());
-        return false;
-    }
+	} catch (const toml::parse_error& err) {
+		std::string errDescription = std::string(err.description());
+		errorMessage = "TOML parse error: " + wxString::FromUTF8(errDescription);
+		return false;
+	} catch (const std::exception& ex) {
+		errorMessage = "Unexpected error: " + wxString::FromUTF8(ex.what());
+		return false;
+	}
 
-    if (signatureDatas.empty()) {
-        error = "No valid signatures found in file: " + wxString::FromUTF8(filename);
-        return false;
-    }
+	if (signatureDatas.empty()) {
+		errorMessage = "No valid client signatures were loaded from the file: " + wxString::FromUTF8(filePath);
+		return false;
+	}
 
-    return true;
+	return true;
 }
