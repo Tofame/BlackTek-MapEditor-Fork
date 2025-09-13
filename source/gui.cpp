@@ -415,6 +415,7 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	} else {
 		// to-do do MajorVersion. Maybe lets just do own MajorVersion rather than lying that its some 1,2,3... lets do 4 (or 10 or w/e) and say its items.dat forever.
 		// or use those 32 bits for something else.
+		g_items.MajorVersion = 3; // 10.98's otb's major version
 		g_items.MinorVersion = g_gui.gfx.getProtocolVersionByDatSignature();
 		//warnings.push_back(wxString::Format("Detected Protocol: %d", g_items.MinorVersion));
 	}
