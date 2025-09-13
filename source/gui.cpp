@@ -412,6 +412,11 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 			UnloadVersion();
 			return false;
 		}
+	} else {
+		// to-do do MajorVersion. Maybe lets just do own MajorVersion rather than lying that its some 1,2,3... lets do 4 (or 10 or w/e) and say its items.dat forever.
+		// or use those 32 bits for something else.
+		g_items.MinorVersion = g_gui.gfx.getProtocolVersionByDatSignature();
+		//warnings.push_back(wxString::Format("Detected Protocol: %d", g_items.MinorVersion));
 	}
 
 	g_gui.SetLoadDone(30, "Loading items data...");
