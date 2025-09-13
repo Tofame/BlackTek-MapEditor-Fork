@@ -45,6 +45,8 @@
 #include "live_tab.h"
 #include "live_server.h"
 
+#include <wx/filefn.h>
+
 #ifdef __WXOSX__
 #include <AGL/agl.h>
 #endif
@@ -373,22 +375,14 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	else {
 		error = wxString::Format(
 			"[Test 1077, 1098] %d %d",
-			g_gui.gfx.getProtocolVersionByDatSignature(14558),
-			g_gui.gfx.getProtocolVersionByDatSignature(17059)
+			g_gui.gfx.getSignatureData(14558).protocolVersion,
+			g_gui.gfx.getSignatureData(17059).protocolVersion
 		);
 		return false;
 	} */
 
-	g_gui.SetLoadDone(5, "Loading metadata file...");
-	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
-	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings)) {
-		error = "Couldn't load metadata: " + error;
-		g_gui.DestroyLoadBar();
-		UnloadVersion();
-		return false;
-	}
-
-	g_gui.SetLoadDone(10, "Loading sprites file...");
+	// We need to load spr file before dat/otb because itemtype is assigned GameSprite.
+	g_gui.SetLoadDone(20, "Loading sprites file...");
 	wxFileName sprites_path = g_gui.gfx.getSpritesFileName();
 	if(!g_gui.gfx.loadSpriteData(sprites_path.GetFullPath(), error, warnings)) {
 		error = "Couldn't load sprites: " + error;
@@ -397,12 +391,36 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		return false;
 	}
 
-	g_gui.SetLoadDone(20, "Loading items.otb file...");
-	if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
-		error = "Couldn't load items.otb: " + error;
+	// to-do Make maybe a checkbox - just copy over spr signatures checkbox.
+	// And split this below into 2 checks: if items.dat exists + if checkbox is enabled.
+	bool datOnlyLoad = wxFileExists(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.dat"));
+
+	g_gui.SetLoadDone(5, "Loading metadata file...");
+	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
+	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings, datOnlyLoad)) {
+		error = "Couldn't load metadata: " + error;
 		g_gui.DestroyLoadBar();
 		UnloadVersion();
 		return false;
+	}
+
+	if(!datOnlyLoad) {
+		g_gui.SetLoadDone(10, "Loading items.otb file...");
+		if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
+			error = "Couldn't load items.otb: " + error;
+			g_gui.DestroyLoadBar();
+			UnloadVersion();
+			return false;
+		}
+		//warnings.push_back(wxString::Format("Major,Minor,BuildNumber: %d %d %d", g_items.MajorVersion, g_items.MinorVersion, g_items.BuildNumber));
+	} else {
+		// to-do do MajorVersion. Maybe lets just do own MajorVersion rather than lying that its some 1,2,3... lets do 4 (or 10 or w/e) and say its items.dat forever.
+		// or use those 32 bits for something else.
+		const auto& signatureData = g_gui.gfx.getSignatureData();
+		g_items.MajorVersion = signatureData.majorVersion; // to-do 10.98's otb's major version, either add to signatures.toml, or like comment above, start using for smth else.
+		g_items.MinorVersion = signatureData.minorVersion;
+		g_items.BuildNumber = 1; // to-do - information what is this, idk, what is that. But its in [10.98 items.otb]'s with value 1.
+		//warnings.push_back(wxString::Format("Detected Protocol: %d %d %d", signatureData.protocolVersion, signatureData.majorVersion, signatureData.minorVersion));
 	}
 
 	g_gui.SetLoadDone(30, "Loading items data...");

@@ -393,7 +393,7 @@ bool GraphicManager::loadOTFI(const FileName& filename, wxString& error, wxArray
 	return true;
 }
 
-bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings)
+bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings, bool datOnlyLoad)
 {
 	// items.otb has most of the info we need. This only loads the GameSprite metadata
 	FileReadHandle file(nstr(datafile.GetFullPath()));
@@ -405,7 +405,6 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 
 	uint16_t effect_count, distance_count;
 
-	uint32_t datSignature;
 	file.getU32(datSignature);
 	//get max id
 	file.getU16(item_count);
@@ -430,16 +429,28 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 		has_frame_groups = dat_format >= DAT_FORMAT_1057;
 	}
 
+	g_items.setMaxID(item_count + 1);
 	uint16_t id = minID;
 	// loop through all ItemDatabase until we reach the end of file
 	while(id <= maxID) {
 		GameSprite* sType = newd GameSprite();
 		sprite_space[id] = sType;
-
 		sType->id = id;
 
+		ItemType* iType = nullptr;
+
+		if(id < (item_count + 1)) {
+			if(datOnlyLoad) {
+				iType = new ItemType();
+				iType->id = id;
+				iType->clientID = id;
+				iType->sprite = static_cast<GameSprite*>(g_gui.gfx.getSprite(iType->clientID));
+				g_items.getItemMap().set(iType->id, iType);
+			}
+		}
+
 		// Load the sprite flags
-		if(!loadSpriteMetadataFlags(file, sType, error, warnings)) {
+		if(!loadSpriteMetadataFlags(file, sType, error, warnings, datOnlyLoad, iType)) {
 			wxString msg;
 			msg << "Failed to load flags for sprite " << sType->id;
 			warnings.push_back(msg);
@@ -529,7 +540,7 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 	return true;
 }
 
-bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings)
+bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings, bool datOnlyLoad, ItemType* iType)
 {
 	uint8_t prev_flag = 0;
 	uint8_t flag = DatFlagLast;
@@ -609,23 +620,89 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 
 		switch (flag) {
 			case DatFlagGroundBorder:
+				if(iType) {
+					iType->alwaysOnTopOrder = 1;
+				}
+				break;
 			case DatFlagOnBottom:
+				if(iType) {
+					iType->alwaysOnTopOrder = 2;
+				}
+				break;
 			case DatFlagOnTop:
+				if(iType) {
+					iType->alwaysOnTopOrder = 3;
+				}
+				break;
 			case DatFlagContainer:
+				if(iType) {
+					iType->group = ITEM_GROUP_CONTAINER;
+					iType->type = ITEM_TYPE_CONTAINER;
+				}
+				break;
 			case DatFlagStackable:
+				if(iType) {
+					iType->stackable = true;
+				}
+				break;
 			case DatFlagForceUse:
 			case DatFlagMultiUse:
+				break;
 			case DatFlagFluidContainer:
+				if(iType) {
+					iType->group = ITEM_GROUP_FLUID;
+				}
+				break;
 			case DatFlagSplash:
+				if(iType) {
+					iType->group = ITEM_GROUP_SPLASH;
+				}
+				break;
 			case DatFlagNotWalkable:
+				if(iType) {
+					iType->unpassable = true;
+				}
+				break;
 			case DatFlagNotMoveable:
+				if(iType) {
+					iType->moveable = false;
+				}
+				break;
 			case DatFlagBlockProjectile:
+				if(iType) {
+					iType->blockMissiles = true;
+				}
+				break;
 			case DatFlagNotPathable:
+				if(iType) {
+					iType->blockPathfinder = true;
+				}
+				break;
 			case DatFlagPickupable:
+				if(iType) {
+					iType->pickupable = true;
+				}
+				break;
 			case DatFlagHangable:
+				if(iType) {
+					iType->isHangable = true;
+				}
+				break;
 			case DatFlagHookSouth:
+				if(iType) {
+					iType->hookSouth = true;
+				}
+				break;
 			case DatFlagHookEast:
+				if(iType) {
+					iType->hookEast = true;
+				}
+				break;
 			case DatFlagRotateable:
+				if(iType) {
+					iType->rotable = true;
+				}
+				break;
 			case DatFlagDontHide:
 			case DatFlagTranslucent:
 			case DatFlagLyingCorpse:
@@ -636,12 +713,30 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 			case DatFlagUnwrappable:
 			case DatFlagTopEffect:
 			case DatFlagFloorChange:
+				// verify as idk how to do floorChangeDown etc.
+				//item->floorChange = item->floorChangeDown || item->floorChangeNorth || item->floorChangeEast || item->floorChangeSouth || item->floorChangeWest;
+				if(iType) {
+					iType->floorChange = true;
+				}
+				break;
 			case DatFlagNoMoveAnimation:
 			case DatFlagChargeable:
 				break;
 
 			case DatFlagWritable:
+				file.skip(2);
+				if(iType) {
+					iType->allowDistRead = true;
+					iType->canReadText = true;
+				}
+				break;
 			case DatFlagWritableOnce:
+				file.skip(2);
+				if(iType) {
+					iType->allowDistRead = true;
+					iType->canReadText = true;
+				}
+				break;
 			case DatFlagCloth:
 			case DatFlagLensHelp:
 			case DatFlagUsable:
@@ -649,6 +744,9 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				break;
 
 			case DatFlagGround:
+				if(iType) {
+					iType->group = ITEM_GROUP_GROUND;
+				}
 				uint16_t speed;
 				file.getU16(speed);
                 sType->ground_speed = speed;
@@ -682,6 +780,9 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				uint16_t draw_height;
 				file.getU16(draw_height);
 				sType->draw_height = draw_height;
+				if(iType) {
+					iType->hasElevation = true;
+				}
 				break;
 			}
 
@@ -707,6 +808,12 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				break;
 			}
 		}
+	}
+
+	if(datOnlyLoad && iType) {
+		// Manual assignment of some item data based on earlier switch + by analysing 'flags' that were used in .otb.
+		// RME: Now this is confusing, just accept that the ALWAYSONTOP flag means it's always on bottom, got it?!
+		iType->alwaysOnBottom = (iType->alwaysOnTopOrder != 0);
 	}
 
 	return true;
@@ -1729,63 +1836,74 @@ static bool parseHexSignature(const std::string& str, uint32_t& outValue) {
 	return !iss.fail();
 }
 
-bool GraphicManager::loadSignatures(const std::string& filename, wxString& error) {
-    try {
-        std::ifstream file(filename);
-        if (!file.is_open()) {
-            error = "Could not open signatures file: " + wxString::FromUTF8(filename);
-            return false;
-        }
+bool GraphicManager::loadSignatures(const std::string& filePath, wxString& errorMessage) {
+	try {
+		std::ifstream fileStream(filePath);
+		if (!fileStream.is_open()) {
+			errorMessage = "Could not open signature file: " + wxString::FromUTF8(filePath);
+			return false;
+		}
 
-        std::stringstream ss;
-        ss << file.rdbuf();
-        std::string fileContent = ss.str();
+		std::stringstream fileContentStream;
+		fileContentStream << fileStream.rdbuf();
 
-        toml::table tbl = toml::parse(fileContent);
+		toml::table signatureTable = toml::parse(fileContentStream);
 
-        auto clientsArray = tbl["clients"];
-        if (!clientsArray || !clientsArray.is_array()) {
-            error = "Invalid or missing [[clients]] array in signatures file.";
-            return false;
-        }
+		auto clientsArray = signatureTable["clients"];
+		if (!clientsArray || !clientsArray.is_array()) {
+			errorMessage = "Invalid or missing 'clients' array in signatures file.";
+			return false;
+		}
 
-        for (const auto& clientNode : *clientsArray.as_array()) {
-            if (!clientNode.is_table()) continue;
+		for (const auto& clientNode : *clientsArray.as_array()) {
+			if (!clientNode.is_table()) {
+				continue;
+			}
 
-            const toml::table& clientTable = *clientNode.as_table();
+			const toml::table& clientData = *clientNode.as_table();
 
-            auto verVal = clientTable["version"];
-            auto sigValNode = clientTable["datSignature"];
+			// Extract values
+			auto protocolVersionValue = clientData["version"];
+			auto signatureValueNode = clientData["datSignature"];
+			auto majorVersionValue = clientData["majorVersion"];
+			auto minorVersionValue = clientData["minorVersion"];
 
-            if (!verVal || !verVal.is_integer() || !sigValNode || !sigValNode.is_string()) {
-                error = "Invalid entry in signatures file.";
-                return false;
-            }
+			if (!protocolVersionValue || !protocolVersionValue.is_integer() ||
+				!signatureValueNode || !signatureValueNode.is_string()) {
+				errorMessage = "Invalid or missing 'version' or 'datSignature' fields in a client entry.";
+				return false;
+			}
 
-            int ver = static_cast<int>(verVal.value_or(0));
-            std::string sigStr = sigValNode.value_or("");
+			int protocolVersion = static_cast<int>(protocolVersionValue.value_or(0));
+			std::string signatureString = signatureValueNode.value_or("");
 
-            uint32_t sigVal = 0;
-            if (!parseHexSignature(sigStr, sigVal)) {
-                error = "Invalid hex signature: " + wxString::FromUTF8(sigStr);
-                return false;
-            }
+			uint32_t signatureValue = 0;
+			if (!parseHexSignature(signatureString, signatureValue)) {
+				errorMessage = "Invalid hexadecimal signature format: " + wxString::FromUTF8(signatureString);
+				return false;
+			}
 
-            signatureToVersion[sigVal] = ver;
-        }
+			SignatureData signatureRecord;
+			signatureRecord.protocolVersion = protocolVersion;
+			signatureRecord.majorVersion = static_cast<int>(majorVersionValue.value_or(0));
+			signatureRecord.minorVersion = static_cast<int>(minorVersionValue.value_or(0));
 
-    } catch (const toml::parse_error& err) {
-        error = "TOML parse error: " + wxString::FromUTF8(std::string(err.description()));
-        return false;
-    } catch (const std::exception& ex) {
-        error = "Unexpected error: " + wxString::FromUTF8(ex.what());
-        return false;
-    }
+			signatureDatas[signatureValue] = signatureRecord;
+		}
 
-    if (signatureToVersion.empty()) {
-        error = "No valid signatures found in file: " + wxString::FromUTF8(filename);
-        return false;
-    }
+	} catch (const toml::parse_error& err) {
+		std::string errDescription = std::string(err.description());
+		errorMessage = "TOML parse error: " + wxString::FromUTF8(errDescription);
+		return false;
+	} catch (const std::exception& ex) {
+		errorMessage = "Unexpected error: " + wxString::FromUTF8(ex.what());
+		return false;
+	}
 
-    return true;
+	if (signatureDatas.empty()) {
+		errorMessage = "No valid client signatures were loaded from the file: " + wxString::FromUTF8(filePath);
+		return false;
+	}
+
+	return true;
 }
