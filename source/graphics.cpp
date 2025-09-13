@@ -429,7 +429,7 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 		has_frame_groups = dat_format >= DAT_FORMAT_1057;
 	}
 
-	g_items.setMaxID(item_count); // to-do item_count or item_count + 1 ?
+	g_items.setMaxID(item_count + 1);
 	uint16_t id = minID;
 	// loop through all ItemDatabase until we reach the end of file
 	while(id <= maxID) {
@@ -438,8 +438,8 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 		sType->id = id;
 
 		ItemType* iType = nullptr;
-		// to-do check: < item_count or <= item_count?
-		if(id < item_count) {
+
+		if(id < (item_count + 1)) {
 			if(datOnlyLoad) {
 				iType = new ItemType();
 				iType->id = id;
