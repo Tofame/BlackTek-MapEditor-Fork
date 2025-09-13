@@ -277,6 +277,14 @@ private:
 	bool is_complete;
 };
 
+struct SignatureData
+{
+	int protocolVersion = 0;
+	uint32_t majorVersion = 0;
+	uint32_t minorVersion = 0;
+};
+constexpr SignatureData SignatureDataPlaceHolder{1098, 3, 57};
+
 class GraphicManager
 {
 public:
@@ -327,16 +335,16 @@ public:
 	// There is getLoadedVersion() method, which also seems to be doing that (?), however who understands
 	// that RME code, can then confirm it and remove those methods below. May light lead you.
 	bool loadSignatures(const std::string& filename, wxString& error);
-	int getProtocolVersionByDatSignature(uint32_t signature) {
-		auto it = signatureToVersion.find(signature);
-		return it != signatureToVersion.end() ? it->second : -1;
+	SignatureData getSignatureData(uint32_t signature) {
+		auto it = signatureDatas.find(signature);
+		return it != signatureDatas.end() ? it->second : SignatureDataPlaceHolder;
 	}
-	int getProtocolVersionByDatSignature() {
-		return getProtocolVersionByDatSignature(datSignature);
+	SignatureData getSignatureData() {
+		return getSignatureData(datSignature);
 	}
 
 private:;
-	std::unordered_map<uint32_t, int> signatureToVersion;
+	std::unordered_map<uint32_t, SignatureData> signatureDatas;
 	uint32_t datSignature = 0;
 
 	bool unloaded;
