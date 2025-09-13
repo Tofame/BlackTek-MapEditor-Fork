@@ -304,8 +304,11 @@ public:
 	// Metadata should be loaded first
 	// This fills the item / creature adress space
 	bool loadOTFI(const FileName& filename, wxString& error, wxArrayString& warnings);
-	bool loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings);
-	bool loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings);
+
+	// datOnlyLoad - we load items.dat, meaning we will be ignoring .otb, and so we want full info from dat.
+	bool loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings, bool datOnlyLoad);
+	bool loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings, bool datOnlyLoad, ItemType* iType);
+
 	bool loadSpriteData(const FileName& datafile, wxString& error, wxArrayString& warnings);
 
 	// Cleans old & unused textures according to config settings

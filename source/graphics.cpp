@@ -393,7 +393,7 @@ bool GraphicManager::loadOTFI(const FileName& filename, wxString& error, wxArray
 	return true;
 }
 
-bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings)
+bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& error, wxArrayString& warnings, bool datOnlyLoad)
 {
 	// items.otb has most of the info we need. This only loads the GameSprite metadata
 	FileReadHandle file(nstr(datafile.GetFullPath()));
@@ -435,11 +435,15 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 	while(id <= maxID) {
 		GameSprite* sType = newd GameSprite();
 		sprite_space[id] = sType;
-
 		sType->id = id;
 
+		ItemType* iType = nullptr;
+		if(datOnlyLoad) {
+			iType = new ItemType();
+		}
+
 		// Load the sprite flags
-		if(!loadSpriteMetadataFlags(file, sType, error, warnings)) {
+		if(!loadSpriteMetadataFlags(file, sType, error, warnings, datOnlyLoad, iType)) {
 			wxString msg;
 			msg << "Failed to load flags for sprite " << sType->id;
 			warnings.push_back(msg);
@@ -529,7 +533,7 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 	return true;
 }
 
-bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings)
+bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* sType, wxString& error, wxArrayString& warnings, bool datOnlyLoad, ItemType* iType)
 {
 	uint8_t prev_flag = 0;
 	uint8_t flag = DatFlagLast;
@@ -609,14 +613,31 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 
 		switch (flag) {
 			case DatFlagGroundBorder:
+				break;
 			case DatFlagOnBottom:
+				break;
 			case DatFlagOnTop:
+				break;
 			case DatFlagContainer:
+				if(iType) {
+					iType->group = ITEM_GROUP_CONTAINER;
+					iType->type = ITEM_TYPE_CONTAINER;
+				}
+				break;
 			case DatFlagStackable:
 			case DatFlagForceUse:
 			case DatFlagMultiUse:
+				break;
 			case DatFlagFluidContainer:
+				if(iType) {
+					iType->group = ITEM_GROUP_FLUID;
+				}
+				break;
 			case DatFlagSplash:
+				if(iType) {
+					iType->group = ITEM_GROUP_SPLASH;
+				}
+				break;
 			case DatFlagNotWalkable:
 			case DatFlagNotMoveable:
 			case DatFlagBlockProjectile:
@@ -649,6 +670,9 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				break;
 
 			case DatFlagGround:
+				if(iType) {
+					iType->group = ITEM_GROUP_GROUND;
+				}
 				uint16_t speed;
 				file.getU16(speed);
                 sType->ground_speed = speed;

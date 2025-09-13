@@ -45,6 +45,8 @@
 #include "live_tab.h"
 #include "live_server.h"
 
+#include <wx/filefn.h>
+
 #ifdef __WXOSX__
 #include <AGL/agl.h>
 #endif
@@ -379,9 +381,13 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		return false;
 	} */
 
+	// Make maybe a checkbox - just copy over spr signatures checkbox.
+	// And split this below into 2 checks: if items.dat exists + if checkbox is enabled.
+	bool datOnlyLoad = wxFileExists(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.dat"));
+
 	g_gui.SetLoadDone(5, "Loading metadata file...");
 	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
-	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings)) {
+	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings, datOnlyLoad)) {
 		error = "Couldn't load metadata: " + error;
 		g_gui.DestroyLoadBar();
 		UnloadVersion();
