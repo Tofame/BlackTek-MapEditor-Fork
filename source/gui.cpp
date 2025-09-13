@@ -360,11 +360,12 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 
 	g_gui.CreateLoadBar("Loading asset files");
 
+	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
+
 	// Load signatures.toml
 	g_gui.SetLoadDone(0, "Loading signatures.toml file...");
-	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
-	if(!g_gui.gfx.loadSignatures(exeDir + "\\signatures.toml", error)) {
-		error = "Couldn't load signatures.toml: " + error;
+	if(!g_gui.gfx.loadSignatures(exeDir + "\\data\\signatures.toml", error)) {
+		error = "Couldn't load signatures.toml from data/: " + error;
 		g_gui.DestroyLoadBar();
 		UnloadVersion();
 		return false;
