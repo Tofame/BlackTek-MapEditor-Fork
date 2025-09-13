@@ -430,7 +430,7 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 		has_frame_groups = dat_format >= DAT_FORMAT_1057;
 	}
 
-	items.maxItemId = item_count; // to-do item_count or item_count + 1 ?
+	g_items.setMaxID(item_count); // to-do item_count or item_count + 1 ?
 	uint16_t id = minID;
 	// loop through all ItemDatabase until we reach the end of file
 	while(id <= maxID) {
@@ -446,7 +446,7 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 				iType->id = id;
 				iType->clientID = id;
 				iType->sprite = static_cast<GameSprite*>(g_gui.gfx.getSprite(iType->clientID));
-				items.set(iType->id, iType);
+				g_items.getItemMap().set(iType->id, iType);
 			}
 		}
 
@@ -666,7 +666,7 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				break;
 			case DatFlagNotMoveable:
 				if(iType) {
-					iType.moveable = false;
+					iType->moveable = false;
 				}
 				break;
 			case DatFlagBlockProjectile:
@@ -812,7 +812,7 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 	if(datOnlyLoad && iType) {
 		// Manual assignment of some item data based on earlier switch + by analysing 'flags' that were used in .otb.
 		// RME: Now this is confusing, just accept that the ALWAYSONTOP flag means it's always on bottom, got it?!
-		iType.alwaysOnBottom = (iType.alwaysOnTopOrder != 0);
+		iType->alwaysOnBottom = (iType->alwaysOnTopOrder != 0);
 	}
 
 	return true;

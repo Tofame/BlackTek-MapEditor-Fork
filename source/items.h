@@ -361,6 +361,8 @@ public:
 
 	void clear();
 
+	void setMaxID(uint16_t id) { maxItemId = id; }
+
 	uint16_t getMinID() const noexcept { return 100; }
 	uint16_t getMaxID() const noexcept { return maxItemId; }
 	const ItemType& getItemType(uint16_t id) const;
@@ -386,6 +388,7 @@ public:
 	uint32_t MinorVersion;
 	uint32_t BuildNumber;
 
+	ItemMap& getItemMap() { return items; }
 protected:
 	bool loadFromOtbVer1(BinaryNode* itemNode, wxString& error, wxArrayString& warnings);
 	bool loadFromOtbVer2(BinaryNode* itemNode, wxString& error, wxArrayString& warnings);
