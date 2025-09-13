@@ -405,7 +405,6 @@ bool GraphicManager::loadSpriteMetadata(const FileName& datafile, wxString& erro
 
 	uint16_t effect_count, distance_count;
 
-	uint32_t datSignature;
 	file.getU32(datSignature);
 	//get max id
 	file.getU16(item_count);
