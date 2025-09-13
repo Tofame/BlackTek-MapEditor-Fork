@@ -725,12 +725,14 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				break;
 
 			case DatFlagWritable:
+				file.skip(2);
 				if(iType) {
 					iType->allowDistRead = true;
 					iType->canReadText = true;
 				}
 				break;
 			case DatFlagWritableOnce:
+				file.skip(2);
 				if(iType) {
 					iType->allowDistRead = true;
 					iType->canReadText = true;
