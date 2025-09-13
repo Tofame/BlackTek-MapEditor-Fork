@@ -381,7 +381,17 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		return false;
 	} */
 
-	// Make maybe a checkbox - just copy over spr signatures checkbox.
+	// We need to load spr file before dat/otb because itemtype is assigned GameSprite.
+	g_gui.SetLoadDone(20, "Loading sprites file...");
+	wxFileName sprites_path = g_gui.gfx.getSpritesFileName();
+	if(!g_gui.gfx.loadSpriteData(sprites_path.GetFullPath(), error, warnings)) {
+		error = "Couldn't load sprites: " + error;
+		g_gui.DestroyLoadBar();
+		UnloadVersion();
+		return false;
+	}
+
+	// to-do Make maybe a checkbox - just copy over spr signatures checkbox.
 	// And split this below into 2 checks: if items.dat exists + if checkbox is enabled.
 	bool datOnlyLoad = wxFileExists(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.dat"));
 
@@ -397,15 +407,6 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	g_gui.SetLoadDone(10, "Loading items.otb file...");
 	if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
 		error = "Couldn't load items.otb: " + error;
-		g_gui.DestroyLoadBar();
-		UnloadVersion();
-		return false;
-	}
-
-	g_gui.SetLoadDone(20, "Loading sprites file...");
-	wxFileName sprites_path = g_gui.gfx.getSpritesFileName();
-	if(!g_gui.gfx.loadSpriteData(sprites_path.GetFullPath(), error, warnings)) {
-		error = "Couldn't load sprites: " + error;
 		g_gui.DestroyLoadBar();
 		UnloadVersion();
 		return false;
