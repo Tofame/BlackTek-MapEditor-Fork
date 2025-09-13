@@ -360,8 +360,18 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 
 	g_gui.CreateLoadBar("Loading asset files");
 
+	g_gui.SetLoadDone(0, "Loading metadata file...");
+
+	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
+	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings)) {
+		error = "Couldn't load metadata: " + error;
+		g_gui.DestroyLoadBar();
+		UnloadVersion();
+		return false;
+	}
+
 	// Load signatures.toml
-	g_gui.SetLoadDone(0, "Loading signatures.toml file...");
+	g_gui.SetLoadDone(5, "Loading signatures.toml file...");
 	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
 	if(!g_gui.gfx.loadSignatures(exeDir + "\\signatures.toml", error)) {
 		error = "Couldn't load signatures.toml: " + error;
@@ -377,16 +387,6 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		);
 		return false;
 	} */
-
-	g_gui.SetLoadDone(5, "Loading metadata file...");
-
-	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
-	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings)) {
-		error = "Couldn't load metadata: " + error;
-		g_gui.DestroyLoadBar();
-		UnloadVersion();
-		return false;
-	}
 
 	g_gui.SetLoadDone(10, "Loading sprites file...");
 
