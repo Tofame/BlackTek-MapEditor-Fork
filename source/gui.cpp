@@ -18,6 +18,7 @@
 #include "main.h"
 
 #include <wx/display.h>
+#include <toml++/toml.hpp>
 
 #include "gui.h"
 #include "main_menubar.h"
@@ -358,8 +359,27 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	}
 
 	g_gui.CreateLoadBar("Loading asset files");
-	g_gui.SetLoadDone(0, "Loading metadata file...");
 
+	std::string exeDir = wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdString();
+
+	// Load signatures.toml
+	g_gui.SetLoadDone(0, "Loading signatures.toml file...");
+	if(!g_gui.gfx.loadSignatures(exeDir + "\\data\\signatures.toml", error)) {
+		error = "Couldn't load signatures.toml from data/: " + error;
+		g_gui.DestroyLoadBar();
+		UnloadVersion();
+		return false;
+	} /* // Debug tests if signatures.toml work properly
+	else {
+		error = wxString::Format(
+			"[Test 1077, 1098] %d %d",
+			g_gui.gfx.getProtocolVersionByDatSignature(14558),
+			g_gui.gfx.getProtocolVersionByDatSignature(17059)
+		);
+		return false;
+	} */
+
+	g_gui.SetLoadDone(5, "Loading metadata file...");
 	wxFileName metadata_path = g_gui.gfx.getMetadataFileName();
 	if(!g_gui.gfx.loadSpriteMetadata(metadata_path, error, warnings)) {
 		error = "Couldn't load metadata: " + error;
@@ -369,7 +389,6 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 	}
 
 	g_gui.SetLoadDone(10, "Loading sprites file...");
-
 	wxFileName sprites_path = g_gui.gfx.getSpritesFileName();
 	if(!g_gui.gfx.loadSpriteData(sprites_path.GetFullPath(), error, warnings)) {
 		error = "Couldn't load sprites: " + error;

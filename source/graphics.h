@@ -320,7 +320,22 @@ public:
 
 	ClientVersion *client_version;
 
-private:
+	// Basically, signatures is used for predicting protocol version (unless somebody has custom signature...)
+	// There is getLoadedVersion() method, which also seems to be doing that (?), however who understands
+	// that RME code, can then confirm it and remove those methods below. May light lead you.
+	bool loadSignatures(const std::string& filename, wxString& error);
+	int getProtocolVersionByDatSignature(uint32_t signature) {
+		auto it = signatureToVersion.find(signature);
+		return it != signatureToVersion.end() ? it->second : -1;
+	}
+	int getProtocolVersionByDatSignature() {
+		return getProtocolVersionByDatSignature(datSignature);
+	}
+
+private:;
+	std::unordered_map<uint32_t, int> signatureToVersion;
+	uint32_t datSignature = 0;
+
 	bool unloaded;
 	// This is used if memcaching is NOT on
 	std::string spritefile;

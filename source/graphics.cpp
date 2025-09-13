@@ -30,6 +30,7 @@
 #include <wx/dir.h>
 #include <wx/rawbmp.h>
 #include "pngfiles.h"
+#include <toml++/toml.hpp>
 
 // All 133 template colors
 static uint32_t TemplateOutfitLookupTable[] = {
@@ -1720,4 +1721,71 @@ void Animator::calculateSynchronous()
 		}
 		last_time = time;
 	}
+}
+
+static bool parseHexSignature(const std::string& str, uint32_t& outValue) {
+	std::istringstream iss(str);
+	iss >> std::hex >> outValue;
+	return !iss.fail();
+}
+
+bool GraphicManager::loadSignatures(const std::string& filename, wxString& error) {
+    try {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            error = "Could not open signatures file: " + wxString::FromUTF8(filename);
+            return false;
+        }
+
+        std::stringstream ss;
+        ss << file.rdbuf();
+        std::string fileContent = ss.str();
+
+        toml::table tbl = toml::parse(fileContent);
+
+        auto clientsArray = tbl["clients"];
+        if (!clientsArray || !clientsArray.is_array()) {
+            error = "Invalid or missing [[clients]] array in signatures file.";
+            return false;
+        }
+
+        for (const auto& clientNode : *clientsArray.as_array()) {
+            if (!clientNode.is_table()) continue;
+
+            const toml::table& clientTable = *clientNode.as_table();
+
+            auto verVal = clientTable["version"];
+            auto sigValNode = clientTable["datSignature"];
+
+            if (!verVal || !verVal.is_integer() || !sigValNode || !sigValNode.is_string()) {
+                error = "Invalid entry in signatures file.";
+                return false;
+            }
+
+            int ver = static_cast<int>(verVal.value_or(0));
+            std::string sigStr = sigValNode.value_or("");
+
+            uint32_t sigVal = 0;
+            if (!parseHexSignature(sigStr, sigVal)) {
+                error = "Invalid hex signature: " + wxString::FromUTF8(sigStr);
+                return false;
+            }
+
+            signatureToVersion[sigVal] = ver;
+        }
+
+    } catch (const toml::parse_error& err) {
+        error = "TOML parse error: " + wxString::FromUTF8(std::string(err.description()));
+        return false;
+    } catch (const std::exception& ex) {
+        error = "Unexpected error: " + wxString::FromUTF8(ex.what());
+        return false;
+    }
+
+    if (signatureToVersion.empty()) {
+        error = "No valid signatures found in file: " + wxString::FromUTF8(filename);
+        return false;
+    }
+
+    return true;
 }
