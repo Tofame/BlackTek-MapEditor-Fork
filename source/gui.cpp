@@ -404,12 +404,14 @@ bool GUI::LoadDataFiles(wxString& error, wxArrayString& warnings)
 		return false;
 	}
 
-	g_gui.SetLoadDone(10, "Loading items.otb file...");
-	if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
-		error = "Couldn't load items.otb: " + error;
-		g_gui.DestroyLoadBar();
-		UnloadVersion();
-		return false;
+	if(!datOnlyLoad) {
+		g_gui.SetLoadDone(10, "Loading items.otb file...");
+		if(!g_items.loadFromOtb(wxString(data_path.GetPath(wxPATH_GET_VOLUME | wxPATH_GET_SEPARATOR) + "items.otb"), error, warnings)) {
+			error = "Couldn't load items.otb: " + error;
+			g_gui.DestroyLoadBar();
+			UnloadVersion();
+			return false;
+		}
 	}
 
 	g_gui.SetLoadDone(30, "Loading items data...");
