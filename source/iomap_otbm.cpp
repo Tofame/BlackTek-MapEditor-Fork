@@ -677,7 +677,7 @@ bool IOMapOTBM::loadMap(Map& map, NodeFileReadHandle& f)
 			"The loaded map appears to be a items.otb format that deviates from the "
 			"items.otb loaded by the editor. Do you still want to attempt to load the map?", wxYES | wxNO) == wxID_YES)
 		{
-			warning("Unsupported or damaged map version");
+			warning("Map was saved with different .otb than the version of current one. Caution - Might be unsupported or damaged map version");
 		} else {
 			error("Outdated items.otb, could not load map");
 			return false;
