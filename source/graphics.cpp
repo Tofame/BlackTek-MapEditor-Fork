@@ -616,25 +616,23 @@ bool GraphicManager::loadSpriteMetadataFlags(FileReadHandle& file, GameSprite* s
 				flag = DatFlagMultiUse;
 		}
 
+		// Comment about alwaysOnBottom - accept that the [ALWAYSONTOP flag (otb) === alwaysOnTopOrder != 0 (dat)], means it's always on bottom.
 		switch (flag) {
 			case DatFlagGroundBorder:
 				if(iType) {
 					iType->alwaysOnTopOrder = 1;
-					// RME: Now this is confusing, just accept that the ALWAYSONTOP flag means it's always on bottom, got it?!
 					iType->alwaysOnBottom = true;
 				}
 				break;
 			case DatFlagOnBottom:
 				if(iType) {
 					iType->alwaysOnTopOrder = 2;
-					// RME: Now this is confusing, just accept that the ALWAYSONTOP flag means it's always on bottom, got it?!
 					iType->alwaysOnBottom = true;
 				}
 				break;
 			case DatFlagOnTop:
 				if(iType) {
 					iType->alwaysOnTopOrder = 3;
-					// RME: Now this is confusing, just accept that the ALWAYSONTOP flag means it's always on bottom, got it?!
 					iType->alwaysOnBottom = true;
 				}
 				break;
