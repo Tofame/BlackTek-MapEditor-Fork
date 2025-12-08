@@ -21,8 +21,11 @@
 #include "live_socket.h"
 #include "net_connection.h"
 
+#include <memory>
+#include <atomic>
+
 class LiveServer;
-class LivePeer : public LiveSocket
+class LivePeer : public LiveSocket, public std::enable_shared_from_this<LivePeer>
 {
 	public:
 		LivePeer(LiveServer* server, asio::ip::tcp::socket socket);
@@ -47,6 +50,9 @@ class LivePeer : public LiveSocket
 
 		//
 		void updateCursor(const Position& position) {}
+		
+		// Check if the peer is closing/closed
+		bool isClosing() const { return closing.load(); }
 
 	protected:
 		void parseLoginPacket(NetworkMessage message);
@@ -77,6 +83,7 @@ class LivePeer : public LiveSocket
 		uint32_t clientId;
 
 		bool connected;
+		std::atomic<bool> closing;
 
 		friend class LiveLogTab;
 		friend class LiveServer;

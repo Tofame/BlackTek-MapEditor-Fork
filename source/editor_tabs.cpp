@@ -45,6 +45,11 @@ MapTabbook::MapTabbook(wxWindow *parent, wxWindowID id) :
 	SetSizerAndFit(wxz);
 }
 
+MapTabbook::~MapTabbook()
+{
+	;
+}
+
 void MapTabbook::CycleTab(bool forward)
 {
 	if(!notebook) {
@@ -63,40 +68,33 @@ void MapTabbook::CycleTab(bool forward)
 	notebook->SetSelection(selection);
 }
 
-void MapTabbook::OnNotebookPageClose(wxAuiNotebookEvent& event)
+void MapTabbook::OnNotebookPageClose(wxAuiNotebookEvent& evt)
 {
-	EditorTab* editor_tab = GetTab(event.GetInt());
+	EditorTab* editorTab = GetTab(evt.GetInt());
 
-	MapTab* map_tab = dynamic_cast<MapTab*>(editor_tab);
-	if(map_tab && map_tab->IsUniqueReference() && map_tab->GetMap()) {
-		bool need_refresh = true;
-		Editor* editor = map_tab->GetEditor();
-		if(editor->IsLive()) {
-			if(editor->hasChanges()) {
-				SetFocusedTab(event.GetInt());
+	MapTab* mapTab = dynamic_cast<MapTab*>(editorTab);
+	if(mapTab && mapTab->IsUniqueReference() && mapTab->GetMap()) {
+		bool needRefresh = true;
+		if(mapTab->GetEditor()->IsLive()) {
+			if(mapTab->GetMap()->hasChanged()) {
+				SetFocusedTab(evt.GetInt());
 				if(!g_gui.root->DoQuerySave(false)) {
-					need_refresh = false;
-					event.Veto();
+					needRefresh = false;
+					evt.Veto();
 				}
-			}
-		} else if(editor->hasChanges()) {
-			SetFocusedTab(event.GetInt());
-			if(!g_gui.root->DoQuerySave()) {
-				need_refresh = false;
-				event.Veto();
 			}
 		}
 
-		if(need_refresh) {
+		if(needRefresh) {
 			g_gui.RefreshPalettes(nullptr, false);
 			g_gui.UpdateMenus();
 		}
 		return;
 	}
 
-	LiveLogTab* live_tab = dynamic_cast<LiveLogTab*>(editor_tab);
-	if(live_tab && live_tab->IsConnected()) {
-		event.Veto();
+	LiveLogTab* lt = dynamic_cast<LiveLogTab*>(editorTab);
+	if(lt && lt->IsConnected()) {
+		evt.Veto();
 	}
 }
 
@@ -166,9 +164,9 @@ EditorTab* MapTabbook::GetCurrentTab()
 	return dynamic_cast<EditorTab*>(GetInternalTab(GetSelection()));
 }
 
-EditorTab* MapTabbook::GetTab(int index)
+EditorTab* MapTabbook::GetTab(int idx)
 {
-	return GetInternalTab(index);
+	return GetInternalTab(idx);
 }
 
 wxWindow* MapTabbook::GetCurrentPage()

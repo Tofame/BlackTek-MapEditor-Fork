@@ -50,6 +50,10 @@ public:
 	CopyBuffer& copybuffer;
 	GroundBrush* replace_brush;
 
+	Map map;
+	Selection selection;
+	ActionQueue* actionQueue;
+
 public: // Functions
 	// Live Server handling
 	LiveClient* GetLiveClient() const;
@@ -137,11 +141,6 @@ protected:
 
 	Editor(const Editor&);
 	Editor& operator=(const Editor&);
-
-private:
-	Map map;
-	Selection selection;
-	ActionQueue* actionQueue;
 };
 
 inline void Editor::draw(const Position& offset, bool alt) { drawInternal(offset, alt, true); }

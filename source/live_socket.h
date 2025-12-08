@@ -67,6 +67,9 @@ class LiveSocket
 		//
 		virtual void updateCursor(const Position& position) = 0;
 
+		LiveLogTab* getLog() {
+			return log;
+		}
 	protected:
 		// receive / send methods
 		void receiveNode(NetworkMessage& message, Editor& editor, Action* action, int32_t ndx, int32_t ndy, bool underground);

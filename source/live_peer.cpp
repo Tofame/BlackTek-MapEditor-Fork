@@ -21,35 +21,50 @@
 #include "live_server.h"
 #include "live_tab.h"
 #include "live_action.h"
+#include "live_packets.h"
 
 #include "editor.h"
 
 LivePeer::LivePeer(LiveServer* server, asio::ip::tcp::socket socket) : LiveSocket(),
-	readMessage(), server(server), socket(std::move(socket)), color(), id(0), clientId(0), connected(false)
+	readMessage(), server(server), socket(std::move(socket)), color(), id(0), clientId(0), connected(false), closing(false)
 {
 	ASSERT(server != nullptr);
+	// Initialize buffer with minimum size to prevent "size 0" errors
+	readMessage.buffer.resize(1024);
+	readMessage.position = 0;
 }
 
 LivePeer::~LivePeer()
 {
 	if(socket.is_open()) {
-		socket.close();
+		std::error_code ec;
+		socket.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+		socket.close(ec);
 	}
 }
 
 void LivePeer::close()
 {
+	// Set closing flag to prevent new operations
+	bool expected = false;
+	if (!closing.compare_exchange_strong(expected, true)) {
+		return; // Already closing
+	}
+	
+	// Cancel any pending socket operations
+	if (socket.is_open()) {
+		std::error_code ec;
+		socket.cancel(ec);
+	}
+	
 	server->removeClient(id);
 }
 
 bool LivePeer::handleError(const std::error_code& error)
 {
-	if(error == asio::error::eof || error == asio::error::connection_reset) {
-		logMessage(wxString() + getHostName() + ": disconnected.");
+	if(error == asio::error::eof || error == asio::error::connection_reset ||
+	   error == asio::error::connection_aborted) {
 		close();
-		return true;
-	} else if(error == asio::error::connection_aborted) {
-		logMessage(name + " have left the server.");
 		return true;
 	}
 	return false;
@@ -57,23 +72,49 @@ bool LivePeer::handleError(const std::error_code& error)
 
 std::string LivePeer::getHostName() const
 {
-	return socket.remote_endpoint().address().to_string();
+	if (!socket.is_open()) {
+		return "disconnected";
+	}
+	try {
+		return socket.remote_endpoint().address().to_string();
+	} catch (const std::system_error&) {
+		return "disconnected";
+	}
 }
 
 void LivePeer::receiveHeader()
 {
+	if (closing.load()) {
+		return;
+	}
+	
+	// Ensure buffer is properly sized
+	if (readMessage.buffer.size() < 4) {
+		readMessage.buffer.resize(1024);
+	}
+	
 	readMessage.position = 0;
+	
+	// Capture shared_ptr to keep peer alive during async operation
+	auto self = shared_from_this();
+	
 	asio::async_read(socket,
 		asio::buffer(readMessage.buffer, 4),
-		[this](const std::error_code& error, size_t bytesReceived) -> void {
-			if(error) {
-				if(!handleError(error)) {
-					logMessage(wxString() + getHostName() + ": " + error.message());
-				}
-			} else if(bytesReceived < 4) {
-				logMessage(wxString() + getHostName() + ": Could not receive header[size: " + std::to_string(bytesReceived) + "], disconnecting client.");
+		[this, self](const std::error_code& error, size_t bytesReceived) -> void {
+			if (closing.load()) {
+				return;
+			}
+			
+			if(error || bytesReceived < 4) {
+				handleError(error);
+				close();
 			} else {
-				receive(readMessage.read<uint32_t>());
+				uint32_t packetSize = readMessage.read<uint32_t>();
+				if (packetSize == 0) {
+					receiveHeader();
+				} else {
+					receive(packetSize);
+				}
 			}
 		}
 	);
@@ -81,18 +122,35 @@ void LivePeer::receiveHeader()
 
 void LivePeer::receive(uint32_t packetSize)
 {
+	if (closing.load()) {
+		return;
+	}
+	
+	if(packetSize > MAX_NETWORK_PACKET_SIZE) {
+		close();
+		return;
+	}
+	
 	readMessage.buffer.resize(readMessage.position + packetSize);
+	
+	auto self = shared_from_this();
+	
 	asio::async_read(socket,
 		asio::buffer(&readMessage.buffer[readMessage.position], packetSize),
-		[this](const std::error_code& error, size_t bytesReceived) -> void {
-			if(error) {
-				if(!handleError(error)) {
-					logMessage(wxString() + getHostName() + ": " + error.message());
-				}
-			} else if(bytesReceived < readMessage.buffer.size() - 4) {
-				logMessage(wxString() + getHostName() + ": Could not receive packet[size: " + std::to_string(bytesReceived) + "], disconnecting client.");
+		[this, self, packetSize](const std::error_code& error, size_t bytesReceived) -> void {
+			if (closing.load()) {
+				return;
+			}
+			
+			if(error || bytesReceived < packetSize) {
+				handleError(error);
+				close();
 			} else {
-				wxTheApp->CallAfter([this]() {
+				wxTheApp->CallAfter([this, self]() {
+					if (closing.load()) {
+						return;
+					}
+					
 					if(connected) {
 						parseEditorPacket(std::move(readMessage));
 					} else {
@@ -107,71 +165,89 @@ void LivePeer::receive(uint32_t packetSize)
 
 void LivePeer::send(NetworkMessage& message)
 {
+	if (closing.load() || !socket.is_open()) {
+		return;
+	}
+	
+	// Validate message
+	if (message.size == 0) {
+		return;
+	}
+	
+	// Write packet size to header (first 4 bytes)
 	memcpy(&message.buffer[0], &message.size, 4);
+	
+	// Copy the buffer for async send (message might go out of scope)
+	auto buffer = std::make_shared<std::vector<uint8_t>>(message.buffer);
+	auto self = shared_from_this();
+	size_t totalSize = message.size + 4;
+	
 	asio::async_write(socket,
-		asio::buffer(message.buffer, message.size + 4),
-		[this](const std::error_code& error, size_t bytesTransferred) -> void {
-			if(error) {
-				logMessage(wxString() + getHostName() + ": " + error.message());
-			}
+		asio::buffer(*buffer, totalSize),
+		[this, self, buffer](const std::error_code& error, size_t bytesTransferred) -> void {
+			// Silent - errors will be caught by receive
 		}
 	);
 }
 
 void LivePeer::parseLoginPacket(NetworkMessage message)
 {
-	uint8_t packetType;
-	while(message.position < message.buffer.size()) {
-		packetType = message.read<uint8_t>();
-		switch (packetType) {
-			case PACKET_HELLO_FROM_CLIENT:
-				parseHello(message);
-				break;
-			case PACKET_READY_CLIENT:
-				parseReady(message);
-				break;
-			default: {
-				log->Message("Invalid login packet receieved, connection severed.");
-				close();
-				break;
+	try {
+		uint8_t packetType;
+		while(message.position < message.buffer.size()) {
+			packetType = message.read<uint8_t>();
+			switch (packetType) {
+				case PACKET_HELLO_FROM_CLIENT:
+					parseHello(message);
+					break;
+				case PACKET_READY_CLIENT:
+					parseReady(message);
+					break;
+				default:
+					close();
+					return;
 			}
 		}
+	} catch (const std::exception& e) {
+		close();
 	}
 }
 
 void LivePeer::parseEditorPacket(NetworkMessage message)
 {
-	uint8_t packetType;
-	while(message.position < message.buffer.size()) {
-		packetType = message.read<uint8_t>();
-		switch (packetType) {
-			case PACKET_REQUEST_NODES:
-				parseNodeRequest(message);
-				break;
-			case PACKET_CHANGE_LIST:
-				parseReceiveChanges(message);
-				break;
-			case PACKET_ADD_HOUSE:
-				parseAddHouse(message);
-				break;
-			case PACKET_EDIT_HOUSE:
-				parseEditHouse(message);
-				break;
-			case PACKET_REMOVE_HOUSE:
-				parseRemoveHouse(message);
-				break;
-			case PACKET_CLIENT_UPDATE_CURSOR:
-				parseCursorUpdate(message);
-				break;
-			case PACKET_CLIENT_TALK:
-				parseChatMessage(message);
-				break;
-			default: {
-				log->Message("Invalid editor packet receieved, connection severed.");
-				close();
-				break;
+	try {
+		uint8_t packetType;
+		while(message.position < message.buffer.size()) {
+			packetType = message.read<uint8_t>();
+			switch (packetType) {
+				case PACKET_REQUEST_NODES:
+					parseNodeRequest(message);
+					break;
+				case PACKET_CHANGE_LIST:
+					parseReceiveChanges(message);
+					break;
+				case PACKET_ADD_HOUSE:
+					parseAddHouse(message);
+					break;
+				case PACKET_EDIT_HOUSE:
+					parseEditHouse(message);
+					break;
+				case PACKET_REMOVE_HOUSE:
+					parseRemoveHouse(message);
+					break;
+				case PACKET_CLIENT_UPDATE_CURSOR:
+					parseCursorUpdate(message);
+					break;
+				case PACKET_CLIENT_TALK:
+					parseChatMessage(message);
+					break;
+				default:
+					close();
+					return;
 			}
 		}
+	} catch (const std::exception& e) {
+		close();
 	}
 }
 
@@ -215,7 +291,6 @@ void LivePeer::parseHello(NetworkMessage& message)
 	}
 
 	name = wxString(nickname.c_str(), wxConvUTF8);
-	log->Message(name + " (" + getHostName() + ") connected.");
 
 	NetworkMessage outMessage;
 	if(static_cast<ClientVersionID>(clientVersion) != g_gui.GetCurrentVersionID()) {
@@ -236,7 +311,6 @@ void LivePeer::parseReady(NetworkMessage& message)
 
 	connected = true;
 
-	// Find free client id
 	clientId = server->getFreeClientId();
 	if(clientId == 0) {
 		NetworkMessage outMessage;
@@ -248,13 +322,22 @@ void LivePeer::parseReady(NetworkMessage& message)
 		return;
 	}
 
-	server->updateClientList();
+	// Assign a default color to the new client
+	color = wxColor(
+		128 + rand() % 127,
+		128 + rand() % 127,
+		128 + rand() % 127,
+		255
+	);
 
-	// Let's reply
+	server->updateClientList();
+	log->Message(name + " (" + getHostName() + ") joined the session.");
+
+	// Send HELLO_FROM_SERVER packet with map information
 	NetworkMessage outMessage;
 	outMessage.write<uint8_t>(PACKET_HELLO_FROM_SERVER);
 
-	const Map& map = server->getEditor()->getMap();
+	Map& map = server->getEditor()->map;
 	outMessage.write<std::string>(map.getName());
 	outMessage.write<uint16_t>(map.getWidth());
 	outMessage.write<uint16_t>(map.getHeight());
@@ -264,7 +347,7 @@ void LivePeer::parseReady(NetworkMessage& message)
 
 void LivePeer::parseNodeRequest(NetworkMessage& message)
 {
-	Map& map = server->getEditor()->getMap();
+	Map& map = server->getEditor()->map;
 	for(uint32_t nodes = message.read<uint32_t>(); nodes != 0; --nodes) {
 		uint32_t ind = message.read<uint32_t>();
 
@@ -283,14 +366,24 @@ void LivePeer::parseReceiveChanges(NetworkMessage& message)
 {
 	Editor& editor = *server->getEditor();
 
-	// -1 on address since we skip the first START_NODE when sending
+	// Read the tile data. Handle the node format properly.
 	const std::string& data = message.read<std::string>();
-	mapReader.assign(reinterpret_cast<const uint8_t*>(data.c_str() - 1), data.size());
+	if (data.empty()) {
+		return;
+	}
+	
+	// Create a buffer with a fake first byte for the NODE_START that getRootNode skips
+	std::string nodeData;
+	nodeData.reserve(data.size() + 1);
+	nodeData.push_back(0); // Fake NODE_START byte
+	nodeData.append(data);
+	
+	mapReader.assign(reinterpret_cast<const uint8_t*>(nodeData.c_str()), nodeData.size());
 
 	BinaryNode* rootNode = mapReader.getRootNode();
 	BinaryNode* tileNode = rootNode->getChild();
 
-	NetworkedAction* action = static_cast<NetworkedAction*>(editor.createAction(ACTION_REMOTE));
+	NetworkedAction* action = static_cast<NetworkedAction*>(editor.actionQueue->createAction(ACTION_REMOTE));
 	action->owner = clientId;
 
 	if(tileNode) do {
@@ -301,7 +394,7 @@ void LivePeer::parseReceiveChanges(NetworkMessage& message)
 	} while(tileNode->advance());
 	mapReader.close();
 
-	editor.addAction(action);
+	editor.actionQueue->addAction(action);
 
 	g_gui.RefreshView();
 	g_gui.UpdateMinimap();
@@ -336,5 +429,6 @@ void LivePeer::parseCursorUpdate(NetworkMessage& message)
 void LivePeer::parseChatMessage(NetworkMessage& message)
 {
 	const std::string& chatMessage = message.read<std::string>();
-	server->broadcastChat(name, wxstr(chatMessage));
+	// Pass our clientId so we don't receive our own message back
+	server->broadcastChat(name, wxstr(chatMessage), clientId);
 }

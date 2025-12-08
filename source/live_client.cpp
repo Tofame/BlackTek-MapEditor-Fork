@@ -20,6 +20,7 @@
 #include "live_client.h"
 #include "live_tab.h"
 #include "live_action.h"
+#include "live_packets.h"
 #include "editor.h"
 
 #include <wx/event.h>
@@ -28,12 +29,15 @@ LiveClient::LiveClient() : LiveSocket(),
 	readMessage(), queryNodeList(), currentOperation(),
 	resolver(nullptr), socket(nullptr), editor(nullptr), stopped(false)
 {
-	//
+	stopped.store(false);
+	// Initialize buffer with minimum size to prevent "size 0" errors
+	readMessage.buffer.resize(1024);
+	readMessage.position = 0;
 }
 
 LiveClient::~LiveClient()
 {
-	//
+	close();
 }
 
 bool LiveClient::connect(const std::string& address, uint16_t port)
@@ -44,24 +48,24 @@ bool LiveClient::connect(const std::string& address, uint16_t port)
 		return false;
 	}
 
-	auto& service = connection.get_service();
+	auto& context = connection.get_context();
 	if(!resolver) {
-		resolver = std::make_shared<asio::ip::tcp::resolver>(service);
+		resolver = std::make_shared<asio::ip::tcp::resolver>(context);
 	}
 
 	if(!socket) {
-		socket = std::make_shared<asio::ip::tcp::socket>(service);
+		socket = std::make_shared<asio::ip::tcp::socket>(context);
 	}
 
-	asio::ip::tcp::resolver::query query(address, std::to_string(port));
-	resolver->async_resolve(query, [this](const std::error_code& error, asio::ip::tcp::resolver::iterator endpoint_iterator) -> void
-	{
-		if(error) {
-			logMessage("Error: " + error.message());
-		} else {
-			tryConnect(endpoint_iterator);
+	resolver->async_resolve(
+		address,
+		std::to_string(port),
+		[this](const std::error_code& error, asio::ip::tcp::resolver::results_type results) -> void {
+			if (!error) {
+				tryConnect(results);
+			}
 		}
-	});
+	);
 
 	/*
 	if(!client->WaitOnConnect(5, 0)) {
@@ -90,53 +94,70 @@ bool LiveClient::connect(const std::string& address, uint16_t port)
 	return true;
 }
 
-void LiveClient::tryConnect(asio::ip::tcp::resolver::iterator endpoint_iterator)
+void LiveClient::tryConnect(asio::ip::tcp::resolver::results_type endpoints)
 {
-	if(stopped) {
+	if(stopped.load()) {
 		return;
 	}
 
-	if(endpoint_iterator == asio::ip::tcp::resolver::iterator()) {
-		return;
+	// Pick the first endpoint to log (optional)
+	if (!endpoints.empty()) {
+		const auto& ep = *endpoints.begin();
+		logMessage("Joining server " + ep.host_name() + ":" + ep.service_name() + "...");
 	}
 
-	logMessage("Joining server " + endpoint_iterator->host_name() + ":" + endpoint_iterator->service_name() + "...");
-
-	asio::async_connect(*socket, endpoint_iterator, [this](std::error_code error, asio::ip::tcp::resolver::iterator endpoint_iterator) -> void
-	{
-		if(!socket->is_open()) {
-			tryConnect(++endpoint_iterator);
-		} else if(error) {
-			if(handleError(error)) {
-				tryConnect(++endpoint_iterator);
-			} else {
-				wxTheApp->CallAfter([this]() {
-					close();
-					g_gui.CloseLiveEditors(this);
-				});
+	asio::async_connect(
+		*socket,
+		endpoints,
+		[this](std::error_code error, const asio::ip::tcp::endpoint& /*endpoint*/) -> void {
+			if (stopped.load()) {
+				return;
 			}
+			
+			if (!socket->is_open() || error) {
+				if (!handleError(error)) {
+					wxTheApp->CallAfter([this]() {
+						close();
+						g_gui.CloseLiveEditors(this);
+					});
+				}
 		} else {
-			socket->set_option(asio::ip::tcp::no_delay(true), error);
-			if(error) {
+			// Connected successfully
+			logMessage("Connected to server!");
+			
+			std::error_code ec;
+			socket->set_option(asio::ip::tcp::no_delay(true), ec);
+			if (ec) {
 				wxTheApp->CallAfter([this]() {
 					close();
 				});
 				return;
 			}
+
 			sendHello();
 			receiveHeader();
 		}
-	});
+		}
+	);
 }
 
 void LiveClient::close()
 {
+	// Set stopped flag first to prevent new operations
+	bool expected = false;
+	if (!stopped.compare_exchange_strong(expected, true)) {
+		return; // Already closing
+	}
+
 	if(resolver) {
 		resolver->cancel();
 	}
 
 	if(socket) {
-		socket->close();
+		std::error_code ec;
+		socket->cancel(ec);
+		socket->shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+		socket->close(ec);
 	}
 
 	if(log) {
@@ -144,20 +165,12 @@ void LiveClient::close()
 		log->Disconnect();
 		log = nullptr;
 	}
-
-	stopped = true;
 }
 
 bool LiveClient::handleError(const std::error_code& error)
 {
-	if(error == asio::error::eof || error == asio::error::connection_reset) {
-		wxTheApp->CallAfter([this]() {
-			log->Message(wxString() + getHostName() + ": disconnected.");
-			close();
-		});
-		return true;
-	} else if(error == asio::error::connection_aborted) {
-		logMessage("You have left the server.");
+	if(error == asio::error::eof || error == asio::error::connection_reset ||
+	   error == asio::error::connection_aborted) {
 		return true;
 	}
 	return false;
@@ -165,26 +178,50 @@ bool LiveClient::handleError(const std::error_code& error)
 
 std::string LiveClient::getHostName() const
 {
-	if(!socket) {
+	if(!socket || !socket->is_open()) {
 		return "not connected";
 	}
-	return socket->remote_endpoint().address().to_string();
+	try {
+		return socket->remote_endpoint().address().to_string();
+	} catch (const std::system_error&) {
+		return "not connected";
+	}
 }
 
 void LiveClient::receiveHeader()
 {
+	if (stopped.load()) {
+		return;
+	}
+	
+	if (!socket || !socket->is_open()) {
+		return;
+	}
+	
+	// Ensure buffer is properly sized
+	if (readMessage.buffer.size() < 4) {
+		readMessage.buffer.resize(1024);
+	}
+	
 	readMessage.position = 0;
+	
 	asio::async_read(*socket,
 		asio::buffer(readMessage.buffer, 4),
 		[this](const std::error_code& error, size_t bytesReceived) -> void {
-			if(error) {
-				if(!handleError(error)) {
-					logMessage(wxString() + getHostName() + ": " + error.message());
-				}
-			} else if(bytesReceived < 4) {
-				logMessage(wxString() + getHostName() + ": Could not receive header[size: " + std::to_string(bytesReceived) + "], disconnecting client.");
+			if (stopped.load()) {
+				return;
+			}
+			
+			if(error || bytesReceived < 4) {
+				handleError(error);
+				close();
 			} else {
-				receive(readMessage.read<uint32_t>());
+				uint32_t packetSize = readMessage.read<uint32_t>();
+				if (packetSize == 0) {
+					receiveHeader();
+				} else {
+					receive(packetSize);
+				}
 			}
 		}
 	);
@@ -192,18 +229,31 @@ void LiveClient::receiveHeader()
 
 void LiveClient::receive(uint32_t packetSize)
 {
+	if (stopped.load()) {
+		return;
+	}
+	
+	if(packetSize > MAX_NETWORK_PACKET_SIZE) {
+		close();
+		return;
+	}
+	
 	readMessage.buffer.resize(readMessage.position + packetSize);
 	asio::async_read(*socket,
 		asio::buffer(&readMessage.buffer[readMessage.position], packetSize),
-		[this](const std::error_code& error, size_t bytesReceived) -> void {
-			if(error) {
-				if(!handleError(error)) {
-					logMessage(wxString() + getHostName() + ": " + error.message());
-				}
-			} else if(bytesReceived < readMessage.buffer.size() - 4) {
-				logMessage(wxString() + getHostName() + ": Could not receive packet[size: " + std::to_string(bytesReceived) + "], disconnecting client.");
+		[this, packetSize](const std::error_code& error, size_t bytesReceived) -> void {
+			if (stopped.load()) {
+				return;
+			}
+			
+			if(error || bytesReceived < packetSize) {
+				handleError(error);
+				close();
 			} else {
 				wxTheApp->CallAfter([this]() {
+					if (stopped.load()) {
+						return;
+					}
 					parsePacket(std::move(readMessage));
 					receiveHeader();
 				});
@@ -214,13 +264,30 @@ void LiveClient::receive(uint32_t packetSize)
 
 void LiveClient::send(NetworkMessage& message)
 {
+	if (stopped.load()) {
+		return;
+	}
+	
+	if (!socket || !socket->is_open()) {
+		return;
+	}
+	
+	// Validate message
+	if (message.size == 0) {
+		return;
+	}
+	
+	// Write packet size to header
 	memcpy(&message.buffer[0], &message.size, 4);
+	
+	// Copy the buffer for async send (message might go out of scope before async completes)
+	auto buffer = std::make_shared<std::vector<uint8_t>>(message.buffer);
+	size_t sendSize = message.size + 4;
+	
 	asio::async_write(*socket,
-		asio::buffer(message.buffer, message.size + 4),
-		[this](const std::error_code& error, size_t bytesTransferred) -> void {
-			if(error) {
-				logMessage(wxString() + getHostName() + ": " + error.message());
-			}
+		asio::buffer(*buffer, sendSize),
+		[this, buffer](const std::error_code& error, size_t bytesTransferred) -> void {
+			// Silent - errors will be caught by receive
 		}
 	);
 }
@@ -309,7 +376,7 @@ void LiveClient::sendChanges(DirtyList& dirtyList)
 		switch (change->getType()) {
 			case CHANGE_TILE: {
 				const Position& position = static_cast<Tile*>(change->getData())->getPosition();
-				sendTile(mapWriter, editor->getMap().getTile(position), &position);
+				sendTile(mapWriter, editor->map.getTile(position), &position);
 				break;
 			}
 			default:
@@ -353,43 +420,45 @@ void LiveClient::queryNode(int32_t ndx, int32_t ndy, bool underground)
 
 void LiveClient::parsePacket(NetworkMessage message)
 {
-	uint8_t packetType;
-	while(message.position < message.buffer.size()) {
-		packetType = message.read<uint8_t>();
-		switch (packetType) {
-			case PACKET_HELLO_FROM_SERVER:
-				parseHello(message);
-				break;
-			case PACKET_KICK:
-				parseKick(message);
-				break;
-			case PACKET_ACCEPTED_CLIENT:
-				parseClientAccepted(message);
-				break;
-			case PACKET_CHANGE_CLIENT_VERSION:
-				parseChangeClientVersion(message);
-				break;
-			case PACKET_SERVER_TALK:
-				parseServerTalk(message);
-				break;
-			case PACKET_NODE:
-				parseNode(message);
-				break;
-			case PACKET_CURSOR_UPDATE:
-				parseCursorUpdate(message);
-				break;
-			case PACKET_START_OPERATION:
-				parseStartOperation(message);
-				break;
-			case PACKET_UPDATE_OPERATION:
-				parseUpdateOperation(message);
-				break;
-			default: {
-				log->Message("Unknown packet receieved!");
-				close();
-				break;
+	try {
+		uint8_t packetType;
+		while(message.position < message.buffer.size()) {
+			packetType = message.read<uint8_t>();
+			switch (packetType) {
+				case PACKET_HELLO_FROM_SERVER:
+					parseHello(message);
+					break;
+				case PACKET_KICK:
+					parseKick(message);
+					break;
+				case PACKET_ACCEPTED_CLIENT:
+					parseClientAccepted(message);
+					break;
+				case PACKET_CHANGE_CLIENT_VERSION:
+					parseChangeClientVersion(message);
+					break;
+				case PACKET_SERVER_TALK:
+					parseServerTalk(message);
+					break;
+				case PACKET_NODE:
+					parseNode(message);
+					break;
+				case PACKET_CURSOR_UPDATE:
+					parseCursorUpdate(message);
+					break;
+				case PACKET_START_OPERATION:
+					parseStartOperation(message);
+					break;
+				case PACKET_UPDATE_OPERATION:
+					parseUpdateOperation(message);
+					break;
+				default:
+					close();
+					return;
 			}
 		}
+	} catch (const std::exception& e) {
+		close();
 	}
 }
 
@@ -398,7 +467,7 @@ void LiveClient::parseHello(NetworkMessage& message)
 	ASSERT(editor == nullptr);
 	editor = newd Editor(g_gui.copybuffer, this);
 
-	Map& map = editor->getMap();
+	Map& map = editor->map;
 	map.setName("Live Map - " + message.read<std::string>());
 	map.setWidth(message.read<uint16_t>());
 	map.setHeight(message.read<uint16_t>());
@@ -416,20 +485,44 @@ void LiveClient::parseKick(NetworkMessage& message)
 
 void LiveClient::parseClientAccepted(NetworkMessage& message)
 {
+	// Note: Avoid using logMessage() here as it can cause issues with CallAfter during packet parsing
+	// Just send the ready packet directly
 	sendReady();
 }
 
 void LiveClient::parseChangeClientVersion(NetworkMessage& message)
 {
 	ClientVersionID clientVersion = static_cast<ClientVersionID>(message.read<uint32_t>());
+	
+	// Check if we need to change version at all
+	if (static_cast<ClientVersionID>(g_gui.GetCurrentVersionID()) == clientVersion) {
+		// Already on the correct version
+		sendReady();
+		return;
+	}
+	
+	// Try to close all editors to switch version
 	if(!g_gui.CloseAllEditors()) {
+		// User cancelled or couldn't close editors
+		if (log) {
+			log->Message("Cannot join: server requires different client version. Close your maps first.");
+		}
+		g_gui.PopupDialog("Version Mismatch", 
+			"The server is using a different client version.\nPlease close all open maps and try again.", wxOK);
 		close();
 		return;
 	}
 
 	wxString error;
 	wxArrayString warnings;
-	g_gui.LoadVersion(clientVersion, error, warnings);
+	if (!g_gui.LoadVersion(clientVersion, error, warnings)) {
+		if (log) {
+			log->Message("Failed to load required client version: " + error);
+		}
+		g_gui.PopupDialog("Version Error", "Failed to load required client version:\n" + error, wxOK);
+		close();
+		return;
+	}
 
 	sendReady();
 }
@@ -453,9 +546,9 @@ void LiveClient::parseNode(NetworkMessage& message)
 	int32_t ndy = (ind >> 4) & 0x3FFF;
 	bool underground = ind & 1;
 
-	Action* action = editor->createAction(ACTION_REMOTE);
+	Action* action = editor->actionQueue->createAction(ACTION_REMOTE);
 	receiveNode(message, *editor, action, ndx, ndy, underground);
-	editor->addAction(action);
+	editor->actionQueue->addAction(action);
 
 	g_gui.RefreshView();
 	g_gui.UpdateMinimap();

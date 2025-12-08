@@ -22,6 +22,9 @@
 #include "net_connection.h"
 #include "action.h"
 
+#include <memory>
+#include <atomic>
+
 class LivePeer;
 class LiveLogTab;
 class QTreeNode;
@@ -62,16 +65,16 @@ class LiveServer : public LiveSocket
 		uint32_t getFreeClientId();
 		std::string getHostName() const;
 
-		//
-		void broadcastNodes(DirtyList& dirtyList);
-		void broadcastChat(const wxString& speaker, const wxString& chatMessage);
-		void broadcastCursor(const LiveCursor& cursor);
+	//
+	void broadcastNodes(DirtyList& dirtyList);
+	void broadcastChat(const wxString& speaker, const wxString& chatMessage, uint32_t excludeClientId = 0);
+	void broadcastCursor(const LiveCursor& cursor);
 
 		void startOperation(const wxString& operationMessage);
 		void updateOperation(int32_t percent);
 
 	protected:
-		std::unordered_map<uint32_t, LivePeer*> clients;
+		std::unordered_map<uint32_t, std::shared_ptr<LivePeer>> clients;
 
 		std::shared_ptr<asio::ip::tcp::acceptor> acceptor;
 		std::shared_ptr<asio::ip::tcp::socket> socket;
@@ -81,7 +84,7 @@ class LiveServer : public LiveSocket
 		uint32_t clientIds;
 		uint16_t port;
 
-		bool stopped;
+		std::atomic<bool> stopped;
 };
 
 #endif

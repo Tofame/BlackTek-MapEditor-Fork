@@ -25,6 +25,9 @@
 #include <cstdint>
 #include <thread>
 #include <mutex>
+#include <atomic>
+#include <memory>
+#include <asio.hpp>
 
 struct NetworkMessage
 {
@@ -33,10 +36,19 @@ struct NetworkMessage
 	void clear();
 	void expand(const size_t length);
 
+	// Check if there are enough bytes to read
+	bool canRead(size_t bytes) const {
+		return position + bytes <= buffer.size();
+	}
+
 	//
 	template<typename T> T read()
 	{
-		T& value = *reinterpret_cast<T*>(&buffer[position]);
+		if (!canRead(sizeof(T))) {
+			throw std::runtime_error("NetworkMessage: read past end of buffer");
+		}
+		T value;
+		memcpy(&value, &buffer[position], sizeof(T));
 		position += sizeof(T);
 		return value;
 	}
@@ -73,12 +85,13 @@ class NetworkConnection
 		bool start();
 		void stop();
 
-		asio::io_service& get_service();
+		asio::io_service& get_context();
 
 	private:
-		asio::io_service* service;
+		std::unique_ptr<asio::io_service> context;
+		std::unique_ptr<asio::executor_work_guard<asio::io_service::executor_type>> workGuard;
 		std::thread thread;
-		bool stopped;
+		std::atomic<bool> running;
 };
 
 #endif

@@ -41,6 +41,9 @@ void NetworkMessage::expand(const size_t length)
 template<> std::string NetworkMessage::read<std::string>()
 {
 	const uint16_t length = read<uint16_t>();
+	if (!canRead(length)) {
+		throw std::runtime_error("NetworkMessage: string read past end of buffer");
+	}
 	char* strBuffer = reinterpret_cast<char*>(&buffer[position]);
 	position += length;
 	return std::string(strBuffer, length);
@@ -74,8 +77,7 @@ template<> void NetworkMessage::write<Position>(const Position& value)
 
 // NetworkConnection
 NetworkConnection::NetworkConnection() :
-	service(nullptr), thread(), stopped(false)
-{
+	context(nullptr), workGuard(nullptr), thread(), running(false) {
 	//
 }
 
@@ -92,47 +94,65 @@ NetworkConnection& NetworkConnection::getInstance()
 
 bool NetworkConnection::start()
 {
-	if(thread.joinable()) {
-		if(stopped) {
-			return false;
-		}
+	// If already running, return true
+	if (running.load()) {
 		return true;
 	}
 
-	stopped = false;
-	if(!service) {
-		service = new asio::io_service;
+	// If thread is joinable but not running, it means we need to clean up first
+	if (thread.joinable()) {
+		thread.join();
 	}
 
+	// Create fresh io_context
+	context = std::make_unique<asio::io_context>();
+	
+	// Create work guard to keep io_context running even without pending work
+	workGuard = std::make_unique<asio::executor_work_guard<asio::io_context::executor_type>>(
+		asio::make_work_guard(*context)
+	);
+
+	running.store(true);
+
 	thread = std::thread([this]() -> void {
-		asio::io_service& serviceRef = *service;
 		try {
-			while(!stopped) {
-				serviceRef.run_one();
-				serviceRef.reset();
-			}
+			context->run();
 		} catch (std::exception& e) {
-			std::cout << e.what() << std::endl;
+			std::cout << "NetworkConnection error: " << e.what() << std::endl;
 		}
+		running.store(false);
 	});
+
 	return true;
 }
 
 void NetworkConnection::stop()
 {
-	if(!service) {
+	if (!running.load() && !thread.joinable()) {
 		return;
 	}
 
-	service->stop();
-	stopped = true;
-	thread.join();
+	// Release work guard to allow io_context to stop when no more work
+	if (workGuard) {
+		workGuard.reset();
+	}
 
-	delete service;
-	service = nullptr;
+	// Stop the context
+	if (context) {
+		context->stop();
+	}
+
+	// Wait for thread to finish
+	if (thread.joinable()) {
+		thread.join();
+	}
+
+	// Clean up
+	context.reset();
+	running.store(false);
 }
 
-asio::io_service& NetworkConnection::get_service()
+asio::io_context& NetworkConnection::get_context()
 {
-	return *service;
+	return *context;
 }

@@ -115,6 +115,9 @@
 #define nstr(str) std::string((const char*)(str.mb_str(wxConvUTF8)))
 #define wxstr(str) wxString((str).c_str(), wxConvUTF8)
 
+// The height of the map (there should be more checks for this...)
+#define MAP_LAYERS 16
+
 // increment & decrement definitions
 #define IMPLEMENT_INCREMENT_OP(Type) \
 	namespace { \

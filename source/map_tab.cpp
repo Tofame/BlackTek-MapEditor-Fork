@@ -27,7 +27,7 @@
 
 MapTab::MapTab(MapTabbook* aui, Editor* editor) :
 	EditorTab(),
-	MapWindow(aui->notebook, *editor),
+	MapWindow(aui, *editor),
 	aui(aui)
 {
 	iref = newd InternalReference;

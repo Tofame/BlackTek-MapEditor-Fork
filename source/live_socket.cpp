@@ -21,6 +21,7 @@
 #include "iomap_otbm.h"
 #include "live_tab.h"
 #include "editor.h"
+#include "definitions.h"
 
 LiveSocket::LiveSocket() :
 	cursors(), mapReader(nullptr, 0), mapWriter(),
@@ -94,18 +95,20 @@ std::vector<LiveCursor> LiveSocket::getCursorList() const
 
 void LiveSocket::logMessage(const wxString& message)
 {
-	wxTheApp->CallAfter([this, message]() {
-		if(log) {
-			log->Message(message);
-		}
-	});
+	// Log directly if we're on the main thread, otherwise skip
+	// (CallAfter is unsafe because 'this' might be destroyed before callback runs)
+	if (wxThread::IsMain() && log) {
+		log->Message(message);
+	}
 }
 
 void LiveSocket::receiveNode(NetworkMessage& message, Editor& editor, Action* action, int32_t ndx, int32_t ndy, bool underground)
 {
-	QTreeNode* node = editor.getMap().getLeaf(ndx * 4, ndy * 4);
+	QTreeNode* node = editor.map.getLeaf(ndx * 4, ndy * 4);
 	if(!node) {
-		log->Message("Warning: Received update for unknown tile (" + std::to_string(ndx * 4) + "/" + std::to_string(ndy * 4) + "/" + (underground ? "true" : "false") + ")");
+		if(log) {
+			log->Message("Warning: Received update for unknown tile (" + std::to_string(ndx * 4) + "/" + std::to_string(ndy * 4) + "/" + (underground ? "true" : "false") + ")");
+		}
 		return;
 	}
 
@@ -117,7 +120,7 @@ void LiveSocket::receiveNode(NetworkMessage& message, Editor& editor, Action* ac
 		return;
 	}
 
-	for(uint_fast8_t z = 0; z < 16; ++z) {
+	for(uint_fast8_t z = 0; z < MAP_LAYERS; ++z) {
 		if(testFlags(floorBits, static_cast<uint64_t>(1) << z)) {
 			receiveFloor(message, editor, action, ndx, ndy, z, node, node->getFloor(z));
 		}
@@ -150,7 +153,7 @@ void LiveSocket::sendNode(uint32_t clientId, QTreeNode* node, int32_t ndx, int32
 		Floor** floors = node->getFloors();
 
 		uint16_t sendMask = 0;
-		for(uint32_t z = 0; z < 16; ++z) {
+		for(uint32_t z = 0; z < MAP_LAYERS; ++z) {
 			uint32_t bit = 1 << z;
 			if(floors[z] && testFlags(floorMask, bit)) {
 				sendMask |= bit;
@@ -158,7 +161,7 @@ void LiveSocket::sendNode(uint32_t clientId, QTreeNode* node, int32_t ndx, int32
 		}
 
 		message.write<uint16_t>(sendMask);
-		for(uint32_t z = 0; z < 16; ++z) {
+		for(uint32_t z = 0; z < MAP_LAYERS; ++z) {
 			if(testFlags(sendMask, static_cast<uint64_t>(1) << z)) {
 				sendFloor(message, floors[z]);
 			}
@@ -170,7 +173,7 @@ void LiveSocket::sendNode(uint32_t clientId, QTreeNode* node, int32_t ndx, int32
 
 void LiveSocket::receiveFloor(NetworkMessage& message, Editor& editor, Action* action, int32_t ndx, int32_t ndy, int32_t z, QTreeNode* node, Floor* floor)
 {
-	Map& map = editor.getMap();
+	Map& map = editor.map;
 
 	uint16_t tileBits = message.read<uint16_t>();
 	if(tileBits == 0) {
@@ -182,9 +185,27 @@ void LiveSocket::receiveFloor(NetworkMessage& message, Editor& editor, Action* a
 		return;
 	}
 
-	// -1 on address since we skip the first START_NODE when sending
+	// Read the tile data. We need to handle the node format properly.
+	// The data doesn't include the initial NODE_START marker that getRootNode() expects to skip.
+	// We prepend a fake byte so getRootNode()'s local_read_index++ points to valid data.
 	const std::string& data = message.read<std::string>();
-	mapReader.assign(reinterpret_cast<const uint8_t*>(data.c_str() - 1), data.size());
+	if (data.empty()) {
+		// No tile data, create empty tiles
+		for(uint_fast8_t x = 0; x < 4; ++x) {
+			for(uint_fast8_t y = 0; y < 4; ++y) {
+				action->addChange(new Change(map.allocator(node->createTile(ndx * 4 + x, ndy * 4 + y, z))));
+			}
+		}
+		return;
+	}
+	
+	// Create a buffer with a fake first byte for the NODE_START that getRootNode skips
+	std::string nodeData;
+	nodeData.reserve(data.size() + 1);
+	nodeData.push_back(0); // Fake NODE_START byte
+	nodeData.append(data);
+	
+	mapReader.assign(reinterpret_cast<const uint8_t*>(nodeData.c_str()), nodeData.size());
 
 	BinaryNode* rootNode = mapReader.getRootNode();
 	BinaryNode* tileNode = rootNode->getChild();
@@ -269,10 +290,10 @@ void LiveSocket::sendTile(MemoryNodeFileWriteHandle& writer, Tile* tile, const P
 	if(tile->getMapFlags()) {
 		writer.addByte(OTBM_ATTR_TILE_FLAGS);
 		writer.addU32(tile->getMapFlags());
-		if (tile->getMapFlags() & TILESTATE_ZONE_BRUSH)
-		{
-			for (const auto& zoneId : tile->getZoneIds())
+		if (tile->getMapFlags() & TILESTATE_ZONE_BRUSH) {
+			for (const auto& zoneId : tile->getZoneIds()) {
 				writer.addU16(zoneId);
+			}
 			writer.addU16(0);
 		}
 	}
@@ -298,7 +319,7 @@ Tile* LiveSocket::readTile(BinaryNode* node, Editor& editor, const Position* pos
 {
 	ASSERT(node != nullptr);
 
-	Map& map = editor.getMap();
+	Map& map = editor.map;
 
 	uint8_t tileType;
 	node->getByte(tileType);
@@ -347,17 +368,16 @@ Tile* LiveSocket::readTile(BinaryNode* node, Editor& editor, const Position* pos
 					//warning("Invalid tile flags of tile on %d:%d:%d", pos.x, pos.y, pos.z);
 				}
 				tile->setMapFlags(flags);
-				if (flags & TILESTATE_ZONE_BRUSH)
-				{
+				if (flags & TILESTATE_ZONE_BRUSH) {
 					uint16_t zoneId = 0;
-					do
-					{
+					do {
 						if (!node->getU16(zoneId)) {
-							//warning("Invalid zone id of tile on %d:%d:%d", pos.x, pos.y, pos.z);
+							// warning("Invalid zone id of tile on %d:%d:%d", pos.x, pos.y, pos.z);
 						}
 
-						if (zoneId != 0)
+						if (zoneId != 0) {
 							tile->addZoneId(zoneId);
+						}
 					} while (zoneId != 0);
 				}
 				break;

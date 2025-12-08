@@ -18,6 +18,8 @@
 #ifndef LIVE_PACKETS_H
 #define LIVE_PACKETS_H
 
+// Maximum packet size to prevent DoS attacks (10MB)
+#define MAX_NETWORK_PACKET_SIZE (10 * 1024 * 1024)
 
 enum LivePacketType
 {

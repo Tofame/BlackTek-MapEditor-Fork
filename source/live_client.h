@@ -22,6 +22,7 @@
 #include "net_connection.h"
 
 #include <set>
+#include <atomic>
 
 class DirtyList;
 class MapTab;
@@ -34,7 +35,7 @@ class LiveClient : public LiveSocket
 
 		//
 		bool connect(const std::string& address, uint16_t port);
-		void tryConnect(asio::ip::tcp::resolver::iterator endpoint);
+		void tryConnect(asio::ip::tcp::resolver::results_type endpoints);
 
 		void close();
 		bool handleError(const std::error_code& error);
@@ -62,6 +63,9 @@ class LiveClient : public LiveSocket
 
 		// Flags a node as queried and stores it, need to call SendNodeRequest to send it to server
 		void queryNode(int32_t ndx, int32_t ndy, bool underground);
+		
+		// Check if client is closing
+		bool isClosing() const { return stopped.load(); }
 
 	protected:
 		void parsePacket(NetworkMessage message);
@@ -88,7 +92,7 @@ class LiveClient : public LiveSocket
 
 		Editor* editor;
 
-		bool stopped;
+		std::atomic<bool> stopped;
 };
 
 #endif

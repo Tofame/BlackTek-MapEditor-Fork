@@ -28,7 +28,7 @@ LiveServer::LiveServer(Editor& editor) : LiveSocket(),
 	clients(), acceptor(nullptr), socket(nullptr), editor(&editor),
 	clientIds(0), port(0), stopped(false)
 {
-	//
+	stopped.store(false);
 }
 
 LiveServer::~LiveServer()
@@ -44,21 +44,42 @@ bool LiveServer::bind()
 		return false;
 	}
 
-	auto& service = connection.get_service();
-	acceptor = std::make_shared<asio::ip::tcp::acceptor>(service);
+	auto& context = connection.get_context();
+	acceptor = std::make_shared<asio::ip::tcp::acceptor>(context);
 
 	asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), port);
-	acceptor->open(endpoint.protocol());
-
+	
 	std::error_code error;
-	acceptor->set_option(asio::ip::tcp::no_delay(true), error);
+	acceptor->open(endpoint.protocol(), error);
 	if(error) {
-		setLastError("Error: " + error.message());
+		setLastError("Error opening socket: " + error.message());
 		return false;
 	}
 
-	acceptor->bind(endpoint);
-	acceptor->listen();
+	// Allow reuse of address to prevent "address already in use" errors
+	acceptor->set_option(asio::socket_base::reuse_address(true), error);
+	if(error) {
+		setLastError("Error setting reuse_address: " + error.message());
+		return false;
+	}
+
+	acceptor->set_option(asio::ip::tcp::no_delay(true), error);
+	if(error) {
+		setLastError("Error setting no_delay: " + error.message());
+		return false;
+	}
+
+	acceptor->bind(endpoint, error);
+	if(error) {
+		setLastError("Error binding to port " + std::to_string(port) + ": " + error.message());
+		return false;
+	}
+	
+	acceptor->listen(asio::socket_base::max_listen_connections, error);
+	if(error) {
+		setLastError("Error listening: " + error.message());
+		return false;
+	}
 
 	acceptClient();
 	return true;
@@ -66,8 +87,13 @@ bool LiveServer::bind()
 
 void LiveServer::close()
 {
+	stopped.store(true);
+	
+	// Close all client connections
 	for(auto& clientEntry : clients) {
-		delete clientEntry.second;
+		if (clientEntry.second) {
+			clientEntry.second->close();
+		}
 	}
 	clients.clear();
 
@@ -77,40 +103,48 @@ void LiveServer::close()
 		log = nullptr;
 	}
 
-	stopped = true;
 	if(acceptor) {
-		acceptor->close();
+		std::error_code ec;
+		acceptor->cancel(ec);
+		acceptor->close(ec);
 	}
 
 	if(socket) {
-		socket->close();
+		std::error_code ec;
+		socket->close(ec);
 	}
 }
 
 void LiveServer::acceptClient()
 {
-	static uint32_t id = 0;
-	if(stopped) {
+	static uint32_t nextPeerId = 1;
+	
+	if(stopped.load()) {
 		return;
 	}
 
-	if(!socket) {
-		socket = std::make_shared<asio::ip::tcp::socket>(
-			NetworkConnection::getInstance().get_service()
-		);
-	}
+	// Always create a fresh socket for accepting new connections
+	socket = std::make_shared<asio::ip::tcp::socket>(
+		NetworkConnection::getInstance().get_context()
+	);
 
 	acceptor->async_accept(*socket, [this](const std::error_code& error) -> void
 	{
-		if(error) {
-			//
-		} else {
-			LivePeer* peer = new LivePeer(this, std::move(*socket));
+		if(stopped.load()) {
+			return;
+		}
+		
+		if(!error) {
+			uint32_t peerId = nextPeerId++;
+			auto peer = std::make_shared<LivePeer>(this, std::move(*socket));
+			peer->id = peerId;
 			peer->log = log;
 			peer->receiveHeader();
 
-			clients.insert(std::make_pair(id++, peer));
+			clients.insert(std::make_pair(peerId, peer));
 		}
+		
+		socket.reset();
 		acceptClient();
 	});
 }
@@ -125,7 +159,7 @@ void LiveServer::removeClient(uint32_t id)
 	const uint32_t clientId = it->second->getClientId();
 	if(clientId != 0) {
 		clientIds &= ~clientId;
-		editor->getMap().clearVisible(clientIds);
+		editor->map.clearVisible(clientIds);
 	}
 
 	clients.erase(it);
@@ -197,13 +231,16 @@ void LiveServer::broadcastNodes(DirtyList& dirtyList)
 		int32_t ndy = (ind.pos >> 4) & 0x3FFF;
 		uint32_t floors = ind.floors;
 
-		QTreeNode* node = editor->getMap().getLeaf(ndx * 4, ndy * 4);
+		QTreeNode* node = editor->map.getLeaf(ndx * 4, ndy * 4);
 		if(!node) {
 			continue;
 		}
 
 		for(auto& clientEntry : clients) {
-			LivePeer* peer = clientEntry.second;
+			auto& peer = clientEntry.second;
+			if (!peer || peer->isClosing()) {
+				continue;
+			}
 
 			const uint32_t clientId = peer->getClientId();
 			if(dirtyList.owner != 0 && dirtyList.owner == clientId) {
@@ -236,29 +273,31 @@ void LiveServer::broadcastCursor(const LiveCursor& cursor)
 	writeCursor(message, cursor);
 
 	for(auto& clientEntry : clients) {
-		LivePeer* peer = clientEntry.second;
-		if(peer->getClientId() != cursor.id) {
+		auto& peer = clientEntry.second;
+		if(peer && !peer->isClosing() && peer->getClientId() != cursor.id) {
 			peer->send(message);
 		}
 	}
 }
 
-void LiveServer::broadcastChat(const wxString& speaker, const wxString& chatMessage)
+void LiveServer::broadcastChat(const wxString& speaker, const wxString& chatMessage, uint32_t excludeClientId)
 {
-	if(clients.empty()) {
-		return;
-	}
-
 	NetworkMessage message;
 	message.write<uint8_t>(PACKET_SERVER_TALK);
 	message.write<std::string>(nstr(speaker));
 	message.write<std::string>(nstr(chatMessage));
 
 	for(auto& clientEntry : clients) {
-		clientEntry.second->send(message);
+		auto& peer = clientEntry.second;
+		// Skip the client who sent the message (they already see it locally)
+		if(peer && !peer->isClosing() && peer->getClientId() != excludeClientId) {
+			peer->send(message);
+		}
 	}
 
-	log->Chat(name, chatMessage);
+	if (log) {
+		log->Chat(speaker, chatMessage);
+	}
 }
 
 void LiveServer::startOperation(const wxString& operationMessage)
@@ -272,7 +311,10 @@ void LiveServer::startOperation(const wxString& operationMessage)
 	message.write<std::string>(nstr(operationMessage));
 
 	for(auto& clientEntry : clients) {
-		clientEntry.second->send(message);
+		auto& peer = clientEntry.second;
+		if(peer && !peer->isClosing()) {
+			peer->send(message);
+		}
 	}
 }
 
@@ -287,7 +329,10 @@ void LiveServer::updateOperation(int32_t percent)
 	message.write<uint32_t>(percent);
 
 	for(auto& clientEntry : clients) {
-		clientEntry.second->send(message);
+		auto& peer = clientEntry.second;
+		if(peer && !peer->isClosing()) {
+			peer->send(message);
+		}
 	}
 }
 

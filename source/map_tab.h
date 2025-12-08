@@ -31,7 +31,7 @@ public:
 	MapTab(const MapTab* other);
 	~MapTab();
 
-	bool IsCurrent() const;
+	bool IsCurrent() const override;
 	bool IsUniqueReference() const;
 	bool HasSameReference(MapTab* other) const;
 
