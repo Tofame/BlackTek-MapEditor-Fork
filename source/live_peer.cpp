@@ -146,15 +146,18 @@ void LivePeer::receive(uint32_t packetSize)
 				handleError(error);
 				close();
 			} else {
-				wxTheApp->CallAfter([this, self]() {
+				// Copy the message data before parsing - we need readMessage for the next receive
+				NetworkMessage messageToProcess = readMessage;
+				
+				wxTheApp->CallAfter([this, self, messageToProcess = std::move(messageToProcess)]() mutable {
 					if (closing.load()) {
 						return;
 					}
 					
 					if(connected) {
-						parseEditorPacket(std::move(readMessage));
+						parseEditorPacket(std::move(messageToProcess));
 					} else {
-						parseLoginPacket(std::move(readMessage));
+						parseLoginPacket(std::move(messageToProcess));
 					}
 					receiveHeader();
 				});
@@ -285,7 +288,9 @@ void LivePeer::parseHello(NetworkMessage& message)
 	std::string password = message.read<std::string>();
 
 	if(server->getPassword() != wxString(password.c_str(), wxConvUTF8)) {
-		log->Message("Client tried to connect, but used the wrong password, connection refused.");
+		if(log) {
+			log->Message("Client tried to connect, but used the wrong password, connection refused.");
+		}
 		close();
 		return;
 	}
@@ -331,7 +336,9 @@ void LivePeer::parseReady(NetworkMessage& message)
 	);
 
 	server->updateClientList();
-	log->Message(name + " (" + getHostName() + ") joined the session.");
+	if(log) {
+		log->Message(name + " (" + getHostName() + ") joined the session.");
+	}
 
 	// Send HELLO_FROM_SERVER packet with map information
 	NetworkMessage outMessage;

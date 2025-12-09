@@ -26,6 +26,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <mutex>
 
 class LiveLogTab;
 class Action;
@@ -54,7 +55,14 @@ class LiveSocket
 		void setLastError(const wxString& error);
 
 		std::string getHostName() const;
-		std::vector<LiveCursor> getCursorList() const;
+
+		const std::unordered_map<uint32_t, LiveCursor>& getCursorList() const {
+			return cursors;
+		}
+
+		std::mutex& getMutex() {
+			return cursorsLock;
+		}
 
 		//
 		void logMessage(const wxString& message);
@@ -89,6 +97,8 @@ class LiveSocket
 
 		//
 		std::unordered_map<uint32_t, LiveCursor> cursors;
+
+		mutable std::mutex cursorsLock;
 
 		MemoryNodeFileReadHandle mapReader;
 		MemoryNodeFileWriteHandle mapWriter;

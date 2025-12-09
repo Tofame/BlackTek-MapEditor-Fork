@@ -1847,7 +1847,7 @@ void Editor::BroadcastNodes(DirtyList& dirtyList)
 {
 	if(IsLiveClient()) {
 		live_client->sendChanges(dirtyList);
-	} else {
+	} else if(live_server) {
 		live_server->broadcastNodes(dirtyList);
 	}
 }

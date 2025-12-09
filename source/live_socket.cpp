@@ -84,14 +84,7 @@ std::string LiveSocket::getHostName() const
 	return "?";
 }
 
-std::vector<LiveCursor> LiveSocket::getCursorList() const
-{
-	std::vector<LiveCursor> cursorList;
-	for(auto& cursorEntry : cursors) {
-		cursorList.push_back(cursorEntry.second);
-	}
-	return cursorList;
-}
+
 
 void LiveSocket::logMessage(const wxString& message)
 {

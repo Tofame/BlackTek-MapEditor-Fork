@@ -57,6 +57,10 @@ void MapTabbook::CycleTab(bool forward)
 	}
 
 	int32_t pageCount = notebook->GetPageCount();
+	if(pageCount == 0) {
+		return;
+	}
+	
 	int32_t currentSelection = notebook->GetSelection();
 
 	int32_t selection;
@@ -174,7 +178,11 @@ wxWindow* MapTabbook::GetCurrentPage()
 	if(GetTabCount() == 0) {
 		return nullptr;
 	}
-	return GetCurrentTab()->GetWindow();
+	EditorTab* tab = GetCurrentTab();
+	if(!tab) {
+		return nullptr;
+	}
+	return tab->GetWindow();
 }
 
 void MapTabbook::OnSwitchEditorMode(EditorMode mode)
@@ -197,6 +205,10 @@ void MapTabbook::SetTabLabel(int idx, wxString label)
 void MapTabbook::DeleteTab(int idx)
 {
 	if(notebook) {
+		wxWindow* page = notebook->GetPage(idx);
+		if(page) {
+			conv.erase(page);
+		}
 		notebook->DeletePage(idx);
 	}
 }

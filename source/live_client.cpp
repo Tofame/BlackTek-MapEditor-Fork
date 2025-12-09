@@ -250,11 +250,14 @@ void LiveClient::receive(uint32_t packetSize)
 				handleError(error);
 				close();
 			} else {
-				wxTheApp->CallAfter([this]() {
+				// Copy the message data before parsing - we need readMessage for the next receive
+				NetworkMessage messageToProcess = readMessage;
+				
+				wxTheApp->CallAfter([this, messageToProcess = std::move(messageToProcess)]() mutable {
 					if (stopped.load()) {
 						return;
 					}
-					parsePacket(std::move(readMessage));
+					parsePacket(std::move(messageToProcess));
 					receiveHeader();
 				});
 			}
@@ -531,10 +534,12 @@ void LiveClient::parseServerTalk(NetworkMessage& message)
 {
 	const std::string& speaker = message.read<std::string>();
 	const std::string& chatMessage = message.read<std::string>();
-	log->Chat(
-		wxstr(speaker),
-		wxstr(chatMessage)
-	);
+	if(log) {
+		log->Chat(
+			wxstr(speaker),
+			wxstr(chatMessage)
+		);
+	}
 }
 
 void LiveClient::parseNode(NetworkMessage& message)
@@ -557,6 +562,8 @@ void LiveClient::parseNode(NetworkMessage& message)
 void LiveClient::parseCursorUpdate(NetworkMessage& message)
 {
 	LiveCursor cursor = readCursor(message);
+	
+	std::lock_guard<std::mutex> lock(cursorsLock);
 	cursors[cursor.id] = cursor;
 
 	g_gui.RefreshView();

@@ -49,6 +49,10 @@ using Color = std::tuple<int, int, int>;
 static std::vector<Color> colors;
 void GenerateColors()
 {
+	if (colors.empty() == false) {
+		return;
+	}
+
 	int r = 250, g = 100, b = 100;
 	const int step = 25;
 	bool incrementing = true;
@@ -64,32 +68,29 @@ void GenerateColors()
 		{
 			g += step;
 		}
-		else if (r > 100 && !incrementing && g == 250)
+		else if (r > 100)
 		{
+			incrementing = false;
 			r -= step;
 		}
-		else if (b < 250 && r == 100)
+		else if (b < 250)
 		{
 			b += step;
 		}
-		else if (g > 100 && b == 250)
+		else if (g > 100)
 		{
 			g -= step;
 		}
-		else if (r < 250 && g == 100)
+		else if (r < 250)
 		{
 			r += step;
 		}
-		else if (b > 100 && r == 250)
+		else if (b > 100)
 		{
 			b -= step;
 		}
-		else if (b == 100 && g == 250)
-		{
-			incrementing = false;
-		}
 
-		if (r == 250 && g == 100 && b == 100 && !incrementing)
+		if (r == 250 && g == 100 && b == 100)
 		{
 			break;
 		}
@@ -821,7 +822,10 @@ void MapDrawer::DrawLiveCursors()
 		return;
 
 	LiveSocket& live = editor.GetLive();
-	for(LiveCursor& cursor : live.getCursorList()) {
+	std::lock_guard<std::mutex> lock(live.getMutex());
+
+	for(const auto& cursorEntry : live.getCursorList()) {
+		LiveCursor cursor = cursorEntry.second;
 		if(cursor.pos.z <= rme::MapGroundLayer && floor > rme::MapGroundLayer) {
 			continue;
 		}
@@ -1632,7 +1636,7 @@ void MapDrawer::DrawTile(TileLocation* location)
 				size_t zones = tile->getZoneIds().size();
 				uint16_t r16 = 0, g16 = 0, b16 = 0;
 				for (const auto zoneId : tile->getZoneIds()) {
-					const uint16_t colorIndex = zoneId % 42;
+					const uint16_t colorIndex = zoneId % colors.size();
 					const Color colour = colors.at(colorIndex);
 
 					r16 += std::get<0>(colour);

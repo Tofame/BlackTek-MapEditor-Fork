@@ -182,7 +182,9 @@ void LiveServer::updateCursor(const Position& position)
 
 void LiveServer::updateClientList() const
 {
-	log->UpdateClientList(clients);
+	if(log) {
+		log->UpdateClientList(clients);
+	}
 }
 
 uint16_t LiveServer::getPort() const
@@ -265,6 +267,7 @@ void LiveServer::broadcastCursor(const LiveCursor& cursor)
 	}
 
 	if(cursor.id != 0) {
+		std::lock_guard<std::mutex> lock(cursorsLock);
 		cursors[cursor.id] = cursor;
 	}
 

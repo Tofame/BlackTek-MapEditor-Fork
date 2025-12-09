@@ -753,17 +753,26 @@ void GUI::CloseCurrentEditor()
 bool GUI::CloseLiveEditors(LiveSocket* sock)
 {
 	for(int i = 0; i < tabbook->GetTabCount(); ++i) {
-		auto *mapTab = dynamic_cast<MapTab*>(tabbook->GetTab(i));
+		EditorTab* tab = tabbook->GetTab(i);
+		if(!tab) {
+			continue;
+		}
+		
+		auto *mapTab = dynamic_cast<MapTab*>(tab);
 		if(mapTab) {
 			Editor* editor = mapTab->GetEditor();
-			if(editor->GetLiveClient() == sock)
+			if(editor && editor->GetLiveClient() == sock) {
 				tabbook->DeleteTab(i--);
+				continue;
+			}
 		}
-		auto *liveLogTab = dynamic_cast<LiveLogTab*>(tabbook->GetTab(i));
+		
+		auto *liveLogTab = dynamic_cast<LiveLogTab*>(tab);
 		if(liveLogTab) {
 			if(liveLogTab->GetSocket() == sock) {
 				liveLogTab->Disconnect();
 				tabbook->DeleteTab(i--);
+				continue;
 			}
 		}
 	}
